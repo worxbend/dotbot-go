@@ -1,0 +1,32 @@
+# Example dotbot-go configuration.
+# Paths on the left are destinations. Paths on the right are relative to the
+# base directory, which defaults to the directory containing this config file.
+
+- defaults:
+    link:
+      create: true
+      relink: true
+      relative: false
+
+- clean:
+    - "~"
+
+- create:
+    - "~/.vim/undo-history"
+    - "~/.local/bin"
+
+- link:
+    ~/.tmux.conf: tmux.conf
+    ~/.vimrc:
+      path: vimrc
+      backup: true
+    ~/.config/starship.toml:
+      path: starship.toml
+    ~/.config/nvim:
+      path: nvim
+
+- shell:
+    - [git submodule update --init --recursive, Installing submodules]
+    - command: "command -v conda >/dev/null 2>&1 && conda config --set changeps1 False || true"
+      description: "Configuring Conda prompt behavior when Conda is installed"
+      quiet: false
