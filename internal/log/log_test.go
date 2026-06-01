@@ -21,7 +21,7 @@ func TestLoggerPrefixesLevels(t *testing.T) {
 	for _, expected := range []string{
 		"debug details",
 		"info  ready",
-		"done  created link",
+		"step  created link",
 		"warn  check this",
 		"error failed",
 	} {

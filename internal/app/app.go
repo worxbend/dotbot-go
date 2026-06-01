@@ -90,6 +90,7 @@ func Run(ctx context.Context, opts Options, stdout io.Writer, deps Dependencies)
 		logger.Error(err.Error())
 		return ErrExit
 	}
+	logger.Action(runSummary(len(tasks), len(opts.ConfigFiles), base, opts.DryRun))
 	handlers := deps.Handlers
 	if opts.DisableBuiltInPlugins {
 		handlers = []core.Handler{}
@@ -130,6 +131,20 @@ func Run(ctx context.Context, opts Options, stdout io.Writer, deps Dependencies)
 	}
 	logger.Error("Some tasks were not executed successfully")
 	return ErrExit
+}
+
+func runSummary(taskCount, configCount int, base string, dryRun bool) string {
+	mode := "apply"
+	if dryRun {
+		mode = "dry-run"
+	}
+	return fmt.Sprintf(
+		"Starting %s with %d task(s), %d config file(s), base %s",
+		mode,
+		taskCount,
+		configCount,
+		base,
+	)
 }
 
 func (d Dependencies) withDefaults() Dependencies {

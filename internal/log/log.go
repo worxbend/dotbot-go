@@ -96,7 +96,7 @@ func labelFor(level Level) string {
 	case Info:
 		return "info "
 	case Action:
-		return "done "
+		return "step "
 	case Warning:
 		return "warn "
 	default:

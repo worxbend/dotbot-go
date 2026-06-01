@@ -26,6 +26,24 @@ Transitive dependency:
 
 - `gopkg.in/check.v1` may appear indirectly through YAML's module graph. It is not used by application code.
 
+### `github.com/titanous/json5`
+
+Purpose: JSON5 configuration parsing for commented JSON-like dotfiles configs.
+
+Justification: Go's standard `encoding/json` package intentionally accepts strict JSON only. JSON5 is a user-facing config format here, so a focused decoder keeps comment/trailing-comma support isolated to `internal/config`.
+
+### `github.com/pelletier/go-toml/v2`
+
+Purpose: TOML configuration parsing.
+
+Justification: Go's standard library has no TOML decoder. `go-toml/v2` is a maintained TOML library with a simple `Unmarshal` API, and the parser is isolated behind the config parser registry.
+
+### `github.com/gurkankaymak/hocon`
+
+Purpose: HOCON `.conf` / `.hocon` configuration parsing.
+
+Justification: HOCON has syntax and substitution semantics beyond JSON. The dependency is isolated behind `internal/config.HOCONParser`, which converts the HOCON value tree into the generic directive representation used by the core dispatcher.
+
 ## Standard Library Usage
 
 - `encoding/json`: JSON config support.

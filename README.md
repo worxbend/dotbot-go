@@ -50,6 +50,16 @@ Run against a config file:
 ./bin/dotbot -c install.conf.yaml
 ```
 
+Supported config formats:
+
+- YAML: `.yaml`, `.yml`
+- JSON: `.json`
+- JSON5 with comments/trailing commas: `.json5`
+- TOML: `.toml`
+- HOCON: `.conf`, `.hocon`
+
+YAML, JSON, and JSON5 can use the traditional Dotbot top-level task list. TOML and HOCON should wrap that ordered list in `tasks = [...]`.
+
 Preview changes without touching the filesystem:
 
 ```bash
