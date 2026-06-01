@@ -37,7 +37,10 @@ func (OSRunner) Run(ctx context.Context, command string, opts Options) int {
 	} else {
 		cmd.Stdin = nil
 	}
-	devnullW, _ := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+	devnullW, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+	if err != nil {
+		devnullW = nil
+	}
 	if devnullW != nil {
 		defer devnullW.Close()
 	}
@@ -55,7 +58,7 @@ func (OSRunner) Run(ctx context.Context, command string, opts Options) int {
 	} else {
 		cmd.Stderr = io.Discard
 	}
-	err := cmd.Run()
+	err = cmd.Run()
 	if err == nil {
 		return 0
 	}

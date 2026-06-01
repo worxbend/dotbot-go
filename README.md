@@ -80,6 +80,8 @@ Show more detail:
 ./bin/dotbot -vv -c install.conf.yaml
 ```
 
+Color is enabled automatically when output is connected to a terminal. Use `--force-color` to keep color in redirected output, or `--no-color` to disable ANSI output.
+
 ## Example Config
 
 A complete example is available at [examples/install.conf.yaml](examples/install.conf.yaml).

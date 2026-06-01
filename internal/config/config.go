@@ -12,7 +12,7 @@ import (
 type Task map[string]any
 
 func Read(paths []string) ([]Task, error) {
-	var tasks []Task
+	tasks := []Task{}
 	for _, path := range paths {
 		fileTasks, err := readOne(path)
 		if err != nil {
@@ -26,30 +26,30 @@ func Read(paths []string) ([]Task, error) {
 func readOne(path string) ([]Task, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("could not read config file: %w", err)
+		return nil, fmt.Errorf("could not read config file %q: %w", path, err)
 	}
 	var raw any
 	if filepath.Ext(path) == ".json" {
 		if err := json.Unmarshal(data, &raw); err != nil {
-			return nil, fmt.Errorf("could not read config file: %w", err)
+			return nil, fmt.Errorf("could not read config file %q: %w", path, err)
 		}
 	} else {
 		if err := yaml.Unmarshal(data, &raw); err != nil {
-			return nil, fmt.Errorf("could not read config file: %w", err)
+			return nil, fmt.Errorf("could not read config file %q: %w", path, err)
 		}
 	}
 	if raw == nil {
-		return nil, nil
+		return []Task{}, nil
 	}
 	list, ok := raw.([]any)
 	if !ok {
-		return nil, fmt.Errorf("configuration file must be a list of tasks")
+		return nil, fmt.Errorf("configuration file %q must be a list of tasks", path)
 	}
 	tasks := make([]Task, 0, len(list))
 	for _, item := range list {
 		m, ok := item.(map[string]any)
 		if !ok {
-			return nil, fmt.Errorf("configuration task must be a mapping")
+			return nil, fmt.Errorf("configuration task in %q must be a mapping", path)
 		}
 		tasks = append(tasks, Task(m))
 	}

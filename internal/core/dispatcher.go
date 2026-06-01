@@ -1,12 +1,16 @@
 package core
 
 import (
+	"context"
 	"fmt"
-	"os"
+	"io"
 	"path/filepath"
+	"time"
 
 	"dotbot-go/internal/config"
+	"dotbot-go/internal/fsops"
 	"dotbot-go/internal/log"
+	"dotbot-go/internal/shell"
 )
 
 type Dispatcher struct {
@@ -14,31 +18,70 @@ type Dispatcher struct {
 	handlers []Handler
 }
 
-func NewDispatcher(baseDirectory string, opts Options, logger *log.Logger, handlers []Handler) (*Dispatcher, error) {
-	abs, err := filepath.Abs(baseDirectory)
+type DispatcherConfig struct {
+	BaseDirectory string
+	Options       Options
+	Logger        *log.Logger
+	Handlers      []Handler
+	FS            fsops.FS
+	Shell         shell.Runner
+	Clock         func() time.Time
+}
+
+func NewDispatcher(cfg DispatcherConfig) (*Dispatcher, error) {
+	abs, err := filepath.Abs(cfg.BaseDirectory)
 	if err != nil {
 		return nil, err
 	}
-	if _, err := os.Stat(abs); err != nil {
-		return nil, fmt.Errorf("nonexistent base directory")
+	fs := cfg.FS
+	if fs == nil {
+		fs = fsops.OSFS{}
+	}
+	if _, err := fs.Stat(abs); err != nil {
+		return nil, fmt.Errorf("nonexistent base directory: %w", err)
+	}
+	runner := cfg.Shell
+	if runner == nil {
+		runner = shell.OSRunner{}
+	}
+	clock := cfg.Clock
+	if clock == nil {
+		clock = time.Now
 	}
 	ctx := &Context{
+		RunContext:    context.Background(),
 		BaseDirectory: abs,
 		Defaults:      map[string]any{},
-		Options:       opts,
-		Log:           logger,
-		FS:            defaultFS(nil),
-		Shell:         defaultShell(nil),
+		Options:       cfg.Options,
+		Log:           defaultLogger(cfg.Logger),
+		FS:            fs,
+		Shell:         runner,
+		Clock:         clock,
 	}
+	handlers := cfg.Handlers
 	if handlers == nil {
 		handlers = BuiltIns()
 	}
 	return &Dispatcher{ctx: ctx, handlers: handlers}, nil
 }
 
-func (d *Dispatcher) Dispatch(tasks []config.Task) (bool, error) {
+func defaultLogger(logger *log.Logger) *log.Logger {
+	if logger != nil {
+		return logger
+	}
+	return log.New(io.Discard)
+}
+
+func (d *Dispatcher) Dispatch(ctx context.Context, tasks []config.Task) (bool, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	d.ctx.RunContext = ctx
 	success := true
 	for _, task := range tasks {
+		if err := ctx.Err(); err != nil {
+			return false, err
+		}
 		for action, data := range task {
 			if d.shouldSkip(action) && action != "defaults" {
 				d.ctx.Log.Info(fmt.Sprintf("Skipping action %s", action))
@@ -73,11 +116,11 @@ func (d *Dispatcher) Dispatch(tasks []config.Task) (bool, error) {
 				}
 				localSuccess, err := handler.Handle(d.ctx, action, data)
 				if err != nil {
+					if d.ctx.Options.ExitOnFailure {
+						return false, fmt.Errorf("executing action %s: %w", action, err)
+					}
 					d.ctx.Log.Error(fmt.Sprintf("An error was encountered while executing action %s", action))
 					d.ctx.Log.Debug(err.Error())
-					if d.ctx.Options.ExitOnFailure {
-						return false, err
-					}
 					success = false
 				}
 				if !localSuccess && d.ctx.Options.ExitOnFailure {

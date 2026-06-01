@@ -246,18 +246,6 @@
       "sourceType": "github",
       "skillPath": "skills/golang-troubleshooting/SKILL.md",
       "computedHash": "48409ef79fc7c02a4e07bd727a162f2814819753803e87e65168cfb90daeda2d"
-    },
-    "golang-uber-dig": {
-      "source": "samber/cc-skills-golang",
-      "sourceType": "github",
-      "skillPath": "skills/golang-uber-dig/SKILL.md",
-      "computedHash": "39e6f92c6b6cb01a5c1a2e3f2ab401330e37575a2dcfe83cd0a2bba14179d4d8"
-    },
-    "golang-uber-fx": {
-      "source": "samber/cc-skills-golang",
-      "sourceType": "github",
-      "skillPath": "skills/golang-uber-fx/SKILL.md",
-      "computedHash": "abf3e6052d04fc7d618df0bb2428c82c8eb0e14465bde1d66e3019cfc214b3dd"
     }
   }
 }

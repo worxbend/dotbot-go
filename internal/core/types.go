@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"os"
 	"time"
 
@@ -20,12 +21,14 @@ type Options struct {
 }
 
 type Context struct {
+	RunContext    context.Context
 	BaseDirectory string
 	Defaults      map[string]any
 	Options       Options
 	Log           *log.Logger
 	FS            fsops.FS
 	Shell         shell.Runner
+	Clock         func() time.Time
 }
 
 type Handler interface {
@@ -41,20 +44,6 @@ func BuiltIns() []Handler {
 		LinkHandler{},
 		ShellHandler{},
 	}
-}
-
-func defaultFS(fs fsops.FS) fsops.FS {
-	if fs != nil {
-		return fs
-	}
-	return fsops.OSFS{}
-}
-
-func defaultShell(r shell.Runner) shell.Runner {
-	if r != nil {
-		return r
-	}
-	return shell.OSRunner{}
 }
 
 func defaultTimeout(d time.Duration) time.Duration {

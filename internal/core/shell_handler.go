@@ -1,7 +1,6 @@
 package core
 
 import (
-	"context"
 	"fmt"
 
 	sh "dotbot-go/internal/shell"
@@ -61,7 +60,7 @@ func (ShellHandler) Handle(ctx *Context, directive string, data any) (bool, erro
 			stdout = true
 			stderr = true
 		}
-		ret := ctx.Shell.Run(context.Background(), cmd, sh.Options{
+		ret := ctx.Shell.Run(ctx.RunContext, cmd, sh.Options{
 			CWD:          ctx.BaseDirectory,
 			EnableStdin:  stdin,
 			EnableStdout: stdout,
