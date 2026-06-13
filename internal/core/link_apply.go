@@ -67,7 +67,12 @@ func deleteLink(ctx *Context, target, path string, opts linkOptions) (bool, bool
 	}
 	shouldRemove := false
 	if ctx.FS.IsSymlink(expand.Path(path)) {
-		current, _ := ctx.FS.Readlink(expand.Path(path))
+		current, err := ctx.FS.Readlink(expand.Path(path))
+		if err != nil {
+			ctx.Log.Warning(fmt.Sprintf("Failed to inspect link %s", path))
+			ctx.Log.Debug(err.Error())
+			return false, false
+		}
 		shouldRemove = current != targetPath
 	} else if ctx.FS.Lexists(expand.Path(path)) {
 		shouldRemove = true
@@ -131,7 +136,12 @@ func createLink(ctx *Context, target, linkName string, opts linkOptions, ignoreM
 	}
 	if ctx.FS.IsSymlink(expand.Path(linkName)) {
 		if opts.Type == "symlink" {
-			current, _ := ctx.FS.Readlink(expand.Path(linkName))
+			current, err := ctx.FS.Readlink(expand.Path(linkName))
+			if err != nil {
+				ctx.Log.Warning(fmt.Sprintf("Failed to inspect link %s", filepath.Clean(linkName)))
+				ctx.Log.Debug(err.Error())
+				return false
+			}
 			if current == targetPath {
 				ctx.Log.Info(fmt.Sprintf("Link exists %s -> %s", filepath.Clean(linkName), targetPath))
 				return true

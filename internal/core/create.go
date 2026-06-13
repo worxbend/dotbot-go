@@ -65,7 +65,9 @@ func createPath(ctx *Context, path string, mode os.FileMode) bool {
 		return false
 	}
 	if err := ctx.FS.Chmod(abs, mode); err != nil {
+		ctx.Log.Warning(fmt.Sprintf("Failed to set mode for path %s", abs))
 		ctx.Log.Debug(err.Error())
+		return false
 	}
 	return true
 }

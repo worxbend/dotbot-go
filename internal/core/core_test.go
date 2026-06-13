@@ -3,6 +3,7 @@ package core
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"dotbot-go/internal/config"
+	"dotbot-go/internal/fsops"
 	"dotbot-go/internal/log"
 )
 
@@ -152,6 +154,153 @@ func TestBackupUsesInjectedClock(t *testing.T) {
 	if _, err := os.Stat(backupPath); err != nil {
 		t.Fatalf("missing backup %q: %v", backupPath, err)
 	}
+}
+
+func TestCleanRemovesBrokenSymlinkPointingIntoBase(t *testing.T) {
+	dir := t.TempDir()
+	base := filepath.Join(dir, "dotfiles")
+	home := filepath.Join(dir, "home")
+	if err := os.MkdirAll(base, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(home, ".vimrc")
+	if err := os.Symlink(filepath.Join(base, "vimrc"), link); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	dispatcher := newTestDispatcher(t, base, &out, Options{})
+	success, err := dispatcher.Dispatch(context.Background(), []config.Task{
+		{"clean": []any{home}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !success {
+		t.Fatalf("dispatch failed: %s", out.String())
+	}
+	if _, err := os.Lstat(link); !os.IsNotExist(err) {
+		t.Fatalf("clean kept broken base link or stat failed: %v", err)
+	}
+}
+
+func TestCleanKeepsBrokenSymlinkOutsideBase(t *testing.T) {
+	dir := t.TempDir()
+	base := filepath.Join(dir, "dotfiles")
+	home := filepath.Join(dir, "home")
+	if err := os.MkdirAll(base, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(home, ".vimrc")
+	if err := os.Symlink(filepath.Join(dir, "elsewhere", "vimrc"), link); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	dispatcher := newTestDispatcher(t, base, &out, Options{})
+	success, err := dispatcher.Dispatch(context.Background(), []config.Task{
+		{"clean": []any{home}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !success {
+		t.Fatalf("dispatch failed: %s", out.String())
+	}
+	if _, err := os.Lstat(link); err != nil {
+		t.Fatalf("clean removed outside-base link: %v", err)
+	}
+}
+
+func TestCreateReportsChmodFailure(t *testing.T) {
+	dir := t.TempDir()
+	var out bytes.Buffer
+	logger := log.New(&out)
+	logger.SetLevel(log.Debug)
+	dispatcher, err := NewDispatcher(DispatcherConfig{
+		BaseDirectory: dir,
+		Logger:        logger,
+		Handlers:      BuiltIns(),
+		FS:            chmodFailFS{OSFS: fsops.OSFS{}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	success, err := dispatcher.Dispatch(context.Background(), []config.Task{
+		{"create": []any{filepath.Join(dir, "ssh")}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if success {
+		t.Fatalf("expected chmod failure: %s", out.String())
+	}
+}
+
+func TestRelinkReportsReadlinkFailure(t *testing.T) {
+	dir := t.TempDir()
+	oldTarget := filepath.Join(dir, "old-vimrc")
+	if err := os.WriteFile(oldTarget, []byte("old\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	newTarget := filepath.Join(dir, "vimrc")
+	if err := os.WriteFile(newTarget, []byte("new\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, ".vimrc")
+	if err := os.Symlink(oldTarget, link); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	logger := log.New(&out)
+	logger.SetLevel(log.Debug)
+	dispatcher, err := NewDispatcher(DispatcherConfig{
+		BaseDirectory: dir,
+		Logger:        logger,
+		Handlers:      BuiltIns(),
+		FS:            readlinkFailFS{OSFS: fsops.OSFS{}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	success, err := dispatcher.Dispatch(context.Background(), []config.Task{
+		{"link": map[string]any{
+			link: map[string]any{"path": "vimrc", "relink": true},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if success {
+		t.Fatalf("expected readlink failure: %s", out.String())
+	}
+	got, err := os.Readlink(link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != oldTarget {
+		t.Fatalf("link target = %q, want original target %q", got, oldTarget)
+	}
+}
+
+type chmodFailFS struct {
+	fsops.OSFS
+}
+
+func (fs chmodFailFS) Chmod(path string, mode os.FileMode) error {
+	return errors.New("chmod failed")
+}
+
+type readlinkFailFS struct {
+	fsops.OSFS
+}
+
+func (fs readlinkFailFS) Readlink(path string) (string, error) {
+	return "", errors.New("readlink failed")
 }
 
 func newTestDispatcher(t *testing.T, dir string, out *bytes.Buffer, opts Options) *Dispatcher {

@@ -72,8 +72,8 @@ func cleanTarget(ctx *Context, target string, force, recursive bool) bool {
 				success = false
 				continue
 			}
-			pointsAt := filepath.Join(filepath.Dir(path), targetPath)
-			if inDirectory(path, ctx.BaseDirectory) || force {
+			pointsAt := linkTargetPath(path, targetPath)
+			if inDirectory(pointsAt, ctx.BaseDirectory) || force {
 				if ctx.Options.DryRun {
 					ctx.Log.Action(fmt.Sprintf("Would remove invalid link %s -> %s", path, pointsAt))
 				} else {
@@ -101,7 +101,14 @@ func inDirectory(path, directory string) bool {
 	if err != nil {
 		p = path
 	}
-	dir = filepath.Clean(dir) + string(filepath.Separator)
+	dir = filepath.Clean(dir)
 	p = filepath.Clean(p)
-	return strings.HasPrefix(p, dir)
+	return p == dir || strings.HasPrefix(p, dir+string(filepath.Separator))
+}
+
+func linkTargetPath(linkPath, targetPath string) string {
+	if filepath.IsAbs(targetPath) {
+		return filepath.Clean(targetPath)
+	}
+	return filepath.Clean(filepath.Join(filepath.Dir(linkPath), targetPath))
 }
