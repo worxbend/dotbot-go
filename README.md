@@ -255,6 +255,7 @@ Useful commands:
 ```bash
 just --list
 just verify
+just vulncheck
 ```
 
 Without `just`:
@@ -262,14 +263,19 @@ Without `just`:
 ```bash
 gofmt -w .
 go mod tidy
+golangci-lint run ./...
 go test ./...
+go test -race ./...
 go vet ./...
+GOTOOLCHAIN=go1.26.4+auto go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 go build -buildvcs=false -o bin/dotbot ./cmd/dotbot-go
 ```
 
 ## Releases
 
-GitHub Actions tests and builds the project on pushes and pull requests. When you push a tag that starts with `v`, for example `v0.2.1`, the workflow publishes a GitHub Release with Linux archives and checksums.
+GitHub Actions tests and builds the project on pushes and pull requests. To publish a release from the GitHub UI, run the `Test, Build, and Release` workflow manually, enter the version, and choose `release` or `prerelease`. The workflow creates the `v` tag, tests and builds that tag, and publishes the GitHub Release with Linux and macOS archives plus checksums.
+
+Tags pushed directly still publish releases. When you push a tag that starts with `v`, for example `v0.2.1`, the workflow publishes a stable GitHub Release. Tags with prerelease suffixes, such as `v0.2.1-rc.1`, are published as prereleases.
 
 Example:
 

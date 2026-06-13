@@ -10,8 +10,20 @@ tidy:
 test:
     go test ./...
 
+test-race:
+    go test -race ./...
+
 vet:
     go vet ./...
+
+lint:
+    golangci-lint run ./...
+
+lint-fix:
+    golangci-lint run --fix ./...
+
+vulncheck:
+    GOTOOLCHAIN=go1.26.4+auto go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
 build:
     mkdir -p bin
@@ -30,4 +42,4 @@ package-linux: build-linux
     rm dist/dotbot
     cd dist && sha256sum dotbot-linux-amd64.tar.gz dotbot-linux-arm64.tar.gz > checksums.txt
 
-verify: fmt tidy test vet build
+verify: fmt tidy lint test test-race vet build
