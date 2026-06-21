@@ -1,3 +1,5 @@
+version := `version=$(git describe --tags --always --dirty 2>/dev/null || printf dev); printf %s "${version#v}"`
+
 default:
     @just --list
 
@@ -27,12 +29,12 @@ vulncheck:
 
 build:
     mkdir -p bin
-    go build -buildvcs=false -o bin/dotbot ./cmd/dotbot-go
+    go build -buildvcs=false -ldflags="-X dotbot-go/internal/app.Version={{version}}" -o bin/dotbot ./cmd/dotbot-go
 
 build-linux:
     mkdir -p dist
-    GOOS=linux GOARCH=amd64 go build -buildvcs=false -trimpath -ldflags="-s -w" -o dist/dotbot-linux-amd64 ./cmd/dotbot-go
-    GOOS=linux GOARCH=arm64 go build -buildvcs=false -trimpath -ldflags="-s -w" -o dist/dotbot-linux-arm64 ./cmd/dotbot-go
+    GOOS=linux GOARCH=amd64 go build -buildvcs=false -trimpath -ldflags="-s -w -X dotbot-go/internal/app.Version={{version}}" -o dist/dotbot-linux-amd64 ./cmd/dotbot-go
+    GOOS=linux GOARCH=arm64 go build -buildvcs=false -trimpath -ldflags="-s -w -X dotbot-go/internal/app.Version={{version}}" -o dist/dotbot-linux-arm64 ./cmd/dotbot-go
 
 package-linux: build-linux
     cp dist/dotbot-linux-amd64 dist/dotbot
