@@ -38,12 +38,6 @@ Purpose: TOML configuration parsing.
 
 Justification: Go's standard library has no TOML decoder. `go-toml/v2` is a maintained TOML library with a simple `Unmarshal` API, and the parser is isolated behind the config parser registry.
 
-### `github.com/gurkankaymak/hocon`
-
-Purpose: HOCON `.conf` / `.hocon` configuration parsing.
-
-Justification: HOCON has syntax and substitution semantics beyond JSON. The dependency is isolated behind `internal/config.HOCONParser`, which converts the HOCON value tree into the generic directive representation used by the core dispatcher.
-
 ## Standard Library Usage
 
 - `encoding/json`: JSON config support.
@@ -60,3 +54,4 @@ Justification: HOCON has syntax and substitution semantics beyond JSON. The depe
 - A color library: ANSI color output is small enough to implement locally.
 - A glob library: `filepath.Glob` plus small recursive `**` handling covers the migration surface without another module.
 - A logging framework: Dotbot output levels are simple and behavior-specific.
+- A HOCON parser: HOCON support was removed because the previous parser exposed map-backed objects, which prevented deterministic source-order execution across supported formats.
