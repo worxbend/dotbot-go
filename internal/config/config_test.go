@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -81,16 +82,6 @@ func TestReadSupportsConfigFormats(t *testing.T) {
 			`,
 			wantKey: "create",
 		},
-		{
-			name: "hocon",
-			file: "install.conf",
-			content: `
-				tasks = [
-				  { shell = ["true"] }
-				]
-			`,
-			wantKey: "shell",
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -112,6 +103,135 @@ func TestReadSupportsConfigFormats(t *testing.T) {
 	}
 }
 
+func TestReadPreservesYAMLTaskDirectiveOrder(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "install.conf.yaml")
+	if err := os.WriteFile(path, []byte(`
+- shell:
+    - [echo before, before]
+  create:
+    - tmp
+  clean:
+    - "~"
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	tasks, err := Read([]string{path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 1 {
+		t.Fatalf("len(tasks) = %d, want 1", len(tasks))
+	}
+	got := actionDirectives(tasks[0].Actions())
+	expected := []string{"shell", "create", "clean"}
+	if strings.Join(got, ",") != strings.Join(expected, ",") {
+		t.Fatalf("action order = %#v, want %#v", got, expected)
+	}
+}
+
+func TestReadPreservesJSONTaskDirectiveOrder(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "install.json")
+	if err := os.WriteFile(path, []byte(`[
+  {
+    "shell": [["echo before", "before"]],
+    "create": ["tmp"],
+    "clean": ["~"]
+  }
+]`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	tasks, err := Read([]string{path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 1 {
+		t.Fatalf("len(tasks) = %d, want 1", len(tasks))
+	}
+	got := actionDirectives(tasks[0].Actions())
+	expected := []string{"shell", "create", "clean"}
+	if strings.Join(got, ",") != strings.Join(expected, ",") {
+		t.Fatalf("action order = %#v, want %#v", got, expected)
+	}
+}
+
+func TestReadPreservesJSON5TaskDirectiveOrder(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "install.json5")
+	if err := os.WriteFile(path, []byte(`[
+  {
+    // JSON5 allows comments, unquoted keys, and trailing commas.
+    shell: [["echo before", "before"]],
+    create: ["tmp"],
+    clean: ["~"],
+  },
+]`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	tasks, err := Read([]string{path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 1 {
+		t.Fatalf("len(tasks) = %d, want 1", len(tasks))
+	}
+	got := actionDirectives(tasks[0].Actions())
+	expected := []string{"shell", "create", "clean"}
+	if strings.Join(got, ",") != strings.Join(expected, ",") {
+		t.Fatalf("action order = %#v, want %#v", got, expected)
+	}
+}
+
+func TestReadPreservesTOMLTaskDirectiveOrder(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "install.toml")
+	if err := os.WriteFile(path, []byte(`
+tasks = [
+  { shell = [["echo before", "before"]], create = ["tmp"], clean = ["~"] },
+]
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	tasks, err := Read([]string{path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 1 {
+		t.Fatalf("len(tasks) = %d, want 1", len(tasks))
+	}
+	got := actionDirectives(tasks[0].Actions())
+	expected := []string{"shell", "create", "clean"}
+	if strings.Join(got, ",") != strings.Join(expected, ",") {
+		t.Fatalf("action order = %#v, want %#v", got, expected)
+	}
+}
+
+func TestReadPreservesTOMLArrayTableTaskDirectiveOrder(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "install.toml")
+	if err := os.WriteFile(path, []byte(`
+[[tasks]]
+shell = [["echo before", "before"]]
+create = ["tmp"]
+clean = ["~"]
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	tasks, err := Read([]string{path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 1 {
+		t.Fatalf("len(tasks) = %d, want 1", len(tasks))
+	}
+	got := actionDirectives(tasks[0].Actions())
+	expected := []string{"shell", "create", "clean"}
+	if strings.Join(got, ",") != strings.Join(expected, ",") {
+		t.Fatalf("action order = %#v, want %#v", got, expected)
+	}
+}
+
 func TestExamplesParse(t *testing.T) {
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {
@@ -123,7 +243,6 @@ func TestExamplesParse(t *testing.T) {
 		filepath.Join(root, "examples", "install.json"),
 		filepath.Join(root, "examples", "install.json5"),
 		filepath.Join(root, "examples", "install.toml"),
-		filepath.Join(root, "examples", "install.hocon"),
 	}
 	for _, path := range paths {
 		t.Run(filepath.Base(path), func(t *testing.T) {
@@ -138,13 +257,30 @@ func TestExamplesParse(t *testing.T) {
 	}
 }
 
-func TestReadRejectsUnsupportedFormat(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "install.ini")
-	if err := os.WriteFile(path, []byte("create=[]\n"), 0o600); err != nil {
-		t.Fatal(err)
+func actionDirectives(actions []Action) []string {
+	out := make([]string, 0, len(actions))
+	for _, action := range actions {
+		out = append(out, action.Directive)
 	}
-	if _, err := Read([]string{path}); err == nil {
-		t.Fatal("expected error")
+	return out
+}
+
+func TestReadRejectsUnsupportedFormat(t *testing.T) {
+	dir := t.TempDir()
+	for _, file := range []string{"install.ini", "install.conf", "install.hocon"} {
+		t.Run(file, func(t *testing.T) {
+			path := filepath.Join(dir, file)
+			if err := os.WriteFile(path, []byte("create=[]\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			_, err := Read([]string{path})
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			if !strings.Contains(err.Error(), "unsupported config file format") {
+				t.Fatalf("error = %q, want unsupported format", err.Error())
+			}
+		})
 	}
 }
 

@@ -11,6 +11,36 @@ type ShellHandler struct{}
 func (ShellHandler) CanHandle(directive string) bool { return directive == "shell" }
 func (ShellHandler) SupportsDryRun() bool            { return true }
 
+func (ShellHandler) Validate(ctx *Context, directive string, data any) error {
+	items, ok := asList(data)
+	if !ok {
+		return fmt.Errorf("shell directive must be a list")
+	}
+	for _, item := range items {
+		if _, _, ok := shellCommandSpec(item); !ok {
+			return fmt.Errorf("shell directive item must include a command")
+		}
+	}
+	return nil
+}
+
+func (h ShellHandler) Plan(ctx *Context, directive string, data any) ([]Operation, error) {
+	if err := h.Validate(ctx, directive, data); err != nil {
+		return nil, err
+	}
+	items, _ := asList(data)
+	operations := []Operation{}
+	for _, item := range items {
+		command, description, _ := shellCommandSpec(item)
+		operations = append(operations, Operation{
+			Directive: directive,
+			Target:    command,
+			Detail:    description,
+		})
+	}
+	return operations, nil
+}
+
 func (ShellHandler) Handle(ctx *Context, directive string, data any) (bool, error) {
 	items, ok := asList(data)
 	if !ok {

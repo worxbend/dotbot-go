@@ -12,13 +12,57 @@ type CreateHandler struct{}
 func (CreateHandler) CanHandle(directive string) bool { return directive == "create" }
 func (CreateHandler) SupportsDryRun() bool            { return true }
 
+func (CreateHandler) Validate(ctx *Context, directive string, data any) error {
+	if paths, ok := asList(data); ok {
+		for _, item := range paths {
+			if _, ok := asString(item); !ok {
+				return fmt.Errorf("create directive item must be a string")
+			}
+		}
+		return nil
+	}
+	if m, ok := asMap(data); ok {
+		for _, path := range sortedKeys(m) {
+			options := m[path]
+			if options == nil {
+				continue
+			}
+			if _, ok := asMap(options); !ok {
+				return fmt.Errorf("create directive options for %s must be a map", path)
+			}
+		}
+		return nil
+	}
+	return fmt.Errorf("create directive must be a list or map")
+}
+
+func (h CreateHandler) Plan(ctx *Context, directive string, data any) ([]Operation, error) {
+	if err := h.Validate(ctx, directive, data); err != nil {
+		return nil, err
+	}
+	operations := []Operation{}
+	if paths, ok := asList(data); ok {
+		for _, item := range paths {
+			path, _ := asString(item)
+			operations = append(operations, Operation{Directive: directive, Target: path})
+		}
+		return operations, nil
+	}
+	m, _ := asMap(data)
+	for _, path := range sortedKeys(m) {
+		operations = append(operations, Operation{Directive: directive, Target: path})
+	}
+	return operations, nil
+}
+
 func (CreateHandler) Handle(ctx *Context, directive string, data any) (bool, error) {
 	success := true
 	defaults, _ := asMap(ctx.Defaults["create"])
 	paths, ok := asList(data)
 	if !ok {
 		if m, isMap := asMap(data); isMap {
-			for key, options := range m {
+			for _, key := range sortedKeys(m) {
+				options := m[key]
 				mode := os.FileMode(0o777)
 				if defaults != nil {
 					mode = parseMode(defaults["mode"], mode)

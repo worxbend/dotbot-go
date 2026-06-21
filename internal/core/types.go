@@ -36,6 +36,16 @@ type Handler interface {
 	Handle(ctx *Context, directive string, data any) (bool, error)
 }
 
+type validatingHandler interface {
+	Handler
+	Validate(ctx *Context, directive string, data any) error
+}
+
+type planningHandler interface {
+	Handler
+	Plan(ctx *Context, directive string, data any) ([]Operation, error)
+}
+
 func BuiltIns() []Handler {
 	return []Handler{
 		CreateHandler{},

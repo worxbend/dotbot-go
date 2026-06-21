@@ -82,7 +82,9 @@ func (d *Dispatcher) Dispatch(ctx context.Context, tasks []config.Task) (bool, e
 		if err := ctx.Err(); err != nil {
 			return false, err
 		}
-		for action, data := range task {
+		for _, taskAction := range task.Actions() {
+			action := taskAction.Directive
+			data := taskAction.Data
 			if d.shouldSkip(action) && action != "defaults" {
 				d.ctx.Log.Info(fmt.Sprintf("Skipping action %s", action))
 				continue
@@ -131,6 +133,63 @@ func (d *Dispatcher) Dispatch(ctx context.Context, tasks []config.Task) (bool, e
 		}
 	}
 	return success, nil
+}
+
+func (d *Dispatcher) Validate(tasks []config.Task) error {
+	_, err := d.Plan(tasks)
+	return err
+}
+
+func (d *Dispatcher) Plan(tasks []config.Task) (Plan, error) {
+	d.ctx.Defaults = map[string]any{}
+	plan := Plan{Operations: []Operation{}}
+	for _, task := range tasks {
+		for _, taskAction := range task.Actions() {
+			action := taskAction.Directive
+			data := taskAction.Data
+			if d.shouldSkip(action) && action != "defaults" {
+				continue
+			}
+			if action == "defaults" {
+				if defaults, ok := asMap(data); ok {
+					d.ctx.Defaults = defaults
+				} else {
+					d.ctx.Defaults = map[string]any{}
+				}
+				continue
+			}
+			handler := d.handlerFor(action)
+			if handler == nil {
+				return plan, fmt.Errorf("action %s not handled", action)
+			}
+			validator, ok := handler.(validatingHandler)
+			if ok {
+				if err := validator.Validate(d.ctx, action, data); err != nil {
+					return plan, fmt.Errorf("validating action %s: %w", action, err)
+				}
+			}
+			planner, ok := handler.(planningHandler)
+			if !ok {
+				plan.Operations = append(plan.Operations, Operation{Directive: action})
+				continue
+			}
+			operations, err := planner.Plan(d.ctx, action, data)
+			if err != nil {
+				return plan, fmt.Errorf("planning action %s: %w", action, err)
+			}
+			plan.Operations = append(plan.Operations, operations...)
+		}
+	}
+	return plan, nil
+}
+
+func (d *Dispatcher) handlerFor(action string) Handler {
+	for _, handler := range d.handlers {
+		if handler.CanHandle(action) {
+			return handler
+		}
+	}
+	return nil
 }
 
 func (d *Dispatcher) shouldSkip(action string) bool {

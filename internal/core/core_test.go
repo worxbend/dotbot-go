@@ -97,6 +97,164 @@ func TestDryRunDoesNotCreateLink(t *testing.T) {
 	}
 }
 
+func TestRelinkUpdatesRelativeSymlink(t *testing.T) {
+	dir := t.TempDir()
+	sourceDir := filepath.Join(dir, "dotfiles")
+	homeDir := filepath.Join(dir, "home")
+	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(homeDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "old-vimrc"), []byte("old\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "vimrc"), []byte("new\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(homeDir, ".vimrc")
+	if err := os.Symlink("../dotfiles/old-vimrc", link); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	dispatcher := newTestDispatcher(t, dir, &out, Options{})
+	success, err := dispatcher.Dispatch(context.Background(), []config.Task{
+		{"link": map[string]any{
+			link: map[string]any{
+				"path":     "dotfiles/vimrc",
+				"relative": true,
+				"relink":   true,
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !success {
+		t.Fatalf("dispatch failed: %s", out.String())
+	}
+
+	got, err := os.Readlink(link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "../dotfiles/vimrc" {
+		t.Fatalf("link target = %q, want relative target", got)
+	}
+}
+
+func TestForceReplacesExistingDirectoryWithSymlink(t *testing.T) {
+	dir := t.TempDir()
+	source := filepath.Join(dir, "nvim")
+	if err := os.MkdirAll(source, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	destination := filepath.Join(dir, ".config", "nvim")
+	if err := os.MkdirAll(destination, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(destination, "init.lua"), []byte("-- old\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	dispatcher := newTestDispatcher(t, dir, &out, Options{})
+	success, err := dispatcher.Dispatch(context.Background(), []config.Task{
+		{"link": map[string]any{
+			destination: map[string]any{"path": "nvim", "force": true},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !success {
+		t.Fatalf("dispatch failed: %s", out.String())
+	}
+
+	got, err := os.Readlink(destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != source {
+		t.Fatalf("link target = %q, want %q", got, source)
+	}
+	if _, err := os.Stat(filepath.Join(destination, "init.lua")); !os.IsNotExist(err) {
+		t.Fatalf("old directory contents still visible or unexpected stat error: %v", err)
+	}
+}
+
+func TestIgnoreMissingCreatesDanglingSymlink(t *testing.T) {
+	dir := t.TempDir()
+	link := filepath.Join(dir, ".missing")
+	var out bytes.Buffer
+	dispatcher := newTestDispatcher(t, dir, &out, Options{})
+	success, err := dispatcher.Dispatch(context.Background(), []config.Task{
+		{"link": map[string]any{
+			link: map[string]any{"path": "missing", "ignore-missing": true},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !success {
+		t.Fatalf("dispatch failed: %s", out.String())
+	}
+
+	got, err := os.Readlink(link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != filepath.Join(dir, "missing") {
+		t.Fatalf("link target = %q, want missing target under base", got)
+	}
+}
+
+func TestGlobPrefixAndExcludeCreatesExpectedLinks(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+	sourceDir := filepath.Join(dir, "dotfiles")
+	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"a.conf", "b.conf", "skip.conf"} {
+		if err := os.WriteFile(filepath.Join(sourceDir, name), []byte(name), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	linkDir := filepath.Join(dir, "links")
+
+	var out bytes.Buffer
+	dispatcher := newTestDispatcher(t, dir, &out, Options{})
+	success, err := dispatcher.Dispatch(context.Background(), []config.Task{
+		{"link": map[string]any{
+			linkDir: map[string]any{
+				"path":    filepath.Join("dotfiles", "*.conf"),
+				"glob":    true,
+				"prefix":  "cfg-",
+				"exclude": []any{filepath.Join("dotfiles", "skip.conf")},
+				"create":  true,
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !success {
+		t.Fatalf("dispatch failed: %s", out.String())
+	}
+
+	for _, name := range []string{"cfg-a.conf", "cfg-b.conf"} {
+		if _, err := os.Readlink(filepath.Join(linkDir, name)); err != nil {
+			t.Fatalf("missing globbed link %s: %v", name, err)
+		}
+	}
+	if _, err := os.Lstat(filepath.Join(linkDir, "cfg-skip.conf")); !os.IsNotExist(err) {
+		t.Fatalf("excluded glob link exists or unexpected stat error: %v", err)
+	}
+}
+
 func TestShellDirectiveFailure(t *testing.T) {
 	dir := t.TempDir()
 	var out bytes.Buffer
@@ -130,6 +288,251 @@ func TestPluginsDirectiveIsUnhandled(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "Action plugins not handled") {
 		t.Fatalf("missing unhandled directive output: %s", out.String())
+	}
+}
+
+func TestValidateRejectsUnhandledDirective(t *testing.T) {
+	dir := t.TempDir()
+	var out bytes.Buffer
+	dispatcher := newTestDispatcher(t, dir, &out, Options{})
+	err := dispatcher.Validate([]config.Task{
+		{"plugins": []any{"example.py"}},
+	})
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	if !strings.Contains(err.Error(), "action plugins not handled") {
+		t.Fatalf("err = %v", err)
+	}
+	if out.Len() != 0 {
+		t.Fatalf("validation wrote output: %s", out.String())
+	}
+}
+
+func TestValidateRejectsMalformedCreateDirective(t *testing.T) {
+	dir := t.TempDir()
+	var out bytes.Buffer
+	dispatcher := newTestDispatcher(t, dir, &out, Options{})
+	err := dispatcher.Validate([]config.Task{
+		{"create": []any{42}},
+	})
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	if !strings.Contains(err.Error(), "create directive item must be a string") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestValidateRejectsInvalidLinkType(t *testing.T) {
+	dir := t.TempDir()
+	var out bytes.Buffer
+	dispatcher := newTestDispatcher(t, dir, &out, Options{})
+	err := dispatcher.Validate([]config.Task{
+		{"link": map[string]any{
+			filepath.Join(dir, ".vimrc"): map[string]any{
+				"path": "vimrc",
+				"type": "copy",
+			},
+		}},
+	})
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	if !strings.Contains(err.Error(), "link type is not recognized") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestValidateRejectsMalformedShellDirective(t *testing.T) {
+	dir := t.TempDir()
+	var out bytes.Buffer
+	dispatcher := newTestDispatcher(t, dir, &out, Options{})
+	err := dispatcher.Validate([]config.Task{
+		{"shell": []any{
+			map[string]any{"description": "missing command"},
+		}},
+	})
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	if !strings.Contains(err.Error(), "shell directive item must include a command") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestValidateHonorsOnlyFilter(t *testing.T) {
+	dir := t.TempDir()
+	var out bytes.Buffer
+	dispatcher := newTestDispatcher(t, dir, &out, Options{Only: []string{"link"}})
+	err := dispatcher.Validate([]config.Task{
+		{"plugins": []any{"example.py"}},
+	})
+	if err != nil {
+		t.Fatalf("validation failed for skipped action: %v", err)
+	}
+}
+
+func TestPlanBuildsOperationList(t *testing.T) {
+	dir := t.TempDir()
+	var out bytes.Buffer
+	dispatcher := newTestDispatcher(t, dir, &out, Options{})
+	plan, err := dispatcher.Plan([]config.Task{
+		{"defaults": map[string]any{
+			"link": map[string]any{"relative": true},
+		}},
+		{"create": []any{"~/.config", "~/.local/bin"}},
+		{"link": map[string]any{
+			filepath.Join(dir, ".vimrc"): "vimrc",
+			filepath.Join(dir, ".config", "nvim"): map[string]any{
+				"path": "nvim",
+			},
+		}},
+		{"clean": []any{"~"}},
+		{"shell": []any{
+			"true",
+			[]any{"echo hi", "say hi"},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Operations) != 7 {
+		t.Fatalf("len(plan.Operations) = %d, want 7: %#v", len(plan.Operations), plan.Operations)
+	}
+	if !hasOperation(plan, Operation{Directive: "create", Target: "~/.config"}) {
+		t.Fatalf("missing create operation: %#v", plan.Operations)
+	}
+	if !hasOperation(plan, Operation{Directive: "link", Target: filepath.Join(dir, ".vimrc"), Detail: "vimrc"}) {
+		t.Fatalf("missing link operation: %#v", plan.Operations)
+	}
+	if !hasOperation(plan, Operation{Directive: "shell", Target: "echo hi", Detail: "say hi"}) {
+		t.Fatalf("missing shell operation: %#v", plan.Operations)
+	}
+}
+
+func TestPlanHonorsOnlyFilter(t *testing.T) {
+	dir := t.TempDir()
+	var out bytes.Buffer
+	dispatcher := newTestDispatcher(t, dir, &out, Options{Only: []string{"shell"}})
+	plan, err := dispatcher.Plan([]config.Task{
+		{"create": []any{"~/.config"}},
+		{"shell": []any{"true"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Operations) != 1 {
+		t.Fatalf("len(plan.Operations) = %d, want 1: %#v", len(plan.Operations), plan.Operations)
+	}
+	if !hasOperation(plan, Operation{Directive: "shell", Target: "true"}) {
+		t.Fatalf("missing shell operation: %#v", plan.Operations)
+	}
+}
+
+func TestPlanSortsMapTargets(t *testing.T) {
+	dir := t.TempDir()
+	var out bytes.Buffer
+	dispatcher := newTestDispatcher(t, dir, &out, Options{})
+	plan, err := dispatcher.Plan([]config.Task{
+		{"create": map[string]any{
+			"z-dir": nil,
+			"a-dir": nil,
+		}},
+		{"clean": map[string]any{
+			"z-clean": nil,
+			"a-clean": nil,
+		}},
+		{"link": map[string]any{
+			"z-link": "z-target",
+			"a-link": "a-target",
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := []Operation{
+		{Directive: "create", Target: "a-dir"},
+		{Directive: "create", Target: "z-dir"},
+		{Directive: "clean", Target: "a-clean"},
+		{Directive: "clean", Target: "z-clean"},
+		{Directive: "link", Target: "a-link", Detail: "a-target"},
+		{Directive: "link", Target: "z-link", Detail: "z-target"},
+	}
+	if len(plan.Operations) != len(expected) {
+		t.Fatalf("len(plan.Operations) = %d, want %d: %#v", len(plan.Operations), len(expected), plan.Operations)
+	}
+	for i, operation := range expected {
+		if plan.Operations[i] != operation {
+			t.Fatalf("operation[%d] = %#v, want %#v", i, plan.Operations[i], operation)
+		}
+	}
+}
+
+func TestPlanPreservesTaskActionOrder(t *testing.T) {
+	dir := t.TempDir()
+	var out bytes.Buffer
+	dispatcher := newTestDispatcher(t, dir, &out, Options{})
+	plan, err := dispatcher.Plan([]config.Task{
+		config.NewTask(
+			config.Action{
+				Directive: "shell",
+				Data:      []any{"true"},
+			},
+			config.Action{
+				Directive: "create",
+				Data:      []any{"~/.config"},
+			},
+			config.Action{
+				Directive: "clean",
+				Data:      []any{"~"},
+			},
+		),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := []string{"shell", "create", "clean"}
+	if len(plan.Operations) != len(expected) {
+		t.Fatalf("operation count = %d, want %d: %#v", len(plan.Operations), len(expected), plan.Operations)
+	}
+	for i, directive := range expected {
+		if plan.Operations[i].Directive != directive {
+			t.Fatalf("operation[%d].Directive = %q, want %q: %#v", i, plan.Operations[i].Directive, directive, plan.Operations)
+		}
+	}
+}
+
+func TestDispatchPreservesTaskActionOrder(t *testing.T) {
+	dir := t.TempDir()
+	var out bytes.Buffer
+	var got []string
+	dispatcher, err := NewDispatcher(DispatcherConfig{
+		BaseDirectory: dir,
+		Logger:        log.New(&out),
+		Handlers: []Handler{
+			recordingHandler{directives: &got},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	success, err := dispatcher.Dispatch(context.Background(), []config.Task{
+		config.NewTask(
+			config.Action{Directive: "second", Data: nil},
+			config.Action{Directive: "first", Data: nil},
+			config.Action{Directive: "third", Data: nil},
+		),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !success {
+		t.Fatalf("dispatch failed: %s", out.String())
+	}
+	expected := []string{"second", "first", "third"}
+	if strings.Join(got, ",") != strings.Join(expected, ",") {
+		t.Fatalf("dispatch order = %#v, want %#v", got, expected)
 	}
 }
 
@@ -351,6 +754,23 @@ func (fs readlinkFailFS) Readlink(path string) (string, error) {
 	return "", errors.New("readlink failed")
 }
 
+type recordingHandler struct {
+	directives *[]string
+}
+
+func (h recordingHandler) CanHandle(directive string) bool {
+	return directive != "defaults"
+}
+
+func (recordingHandler) SupportsDryRun() bool {
+	return true
+}
+
+func (h recordingHandler) Handle(ctx *Context, directive string, data any) (bool, error) {
+	*h.directives = append(*h.directives, directive)
+	return true, nil
+}
+
 func newTestDispatcher(t *testing.T, dir string, out *bytes.Buffer, opts Options) *Dispatcher {
 	t.Helper()
 	logger := log.New(out)
@@ -365,4 +785,29 @@ func newTestDispatcher(t *testing.T, dir string, out *bytes.Buffer, opts Options
 		t.Fatal(err)
 	}
 	return dispatcher
+}
+
+func hasOperation(plan Plan, expected Operation) bool {
+	for _, operation := range plan.Operations {
+		if operation == expected {
+			return true
+		}
+	}
+	return false
+}
+
+func chdir(t *testing.T, dir string) {
+	t.Helper()
+	previous, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(previous); err != nil {
+			t.Errorf("restore working directory: %v", err)
+		}
+	})
 }

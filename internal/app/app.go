@@ -16,7 +16,8 @@ import (
 	"dotbot-go/internal/shell"
 )
 
-const Version = "0.2.1"
+// Version is overridden by release builds with -ldflags "-X ...Version=<version>".
+var Version = "0.2.1"
 
 var ErrExit = errors.New("app: exit")
 
@@ -33,6 +34,9 @@ type Options struct {
 	NoColor       bool
 	ExitOnFailure bool
 	ShowVersion   bool
+	Validate      bool
+	Plan          bool
+	Output        string
 }
 
 type Dependencies struct {
@@ -73,7 +77,7 @@ func Run(ctx context.Context, opts Options, stdout io.Writer, deps Dependencies)
 		logger.Error(err.Error())
 		return ErrExit
 	}
-	if len(tasks) == 0 {
+	if len(tasks) == 0 && !(opts.Plan && opts.Output == "json") {
 		logger.Warning("No tasks given in configuration, no work to do")
 	}
 	base := opts.BaseDirectory
@@ -82,11 +86,6 @@ func Run(ctx context.Context, opts Options, stdout io.Writer, deps Dependencies)
 	} else {
 		base = abs(base)
 	}
-	if err := deps.Chdir(base); err != nil {
-		logger.Error(err.Error())
-		return ErrExit
-	}
-	logger.Action(runSummary(len(tasks), len(opts.ConfigFiles), base, opts.DryRun))
 	coreOpts := core.Options{
 		Only:          opts.Only,
 		Skip:          opts.Skip,
@@ -94,15 +93,33 @@ func Run(ctx context.Context, opts Options, stdout io.Writer, deps Dependencies)
 		DryRun:        opts.DryRun,
 		Verbose:       opts.Verbose,
 	}
-	dispatcher, err := core.NewDispatcher(core.DispatcherConfig{
-		BaseDirectory: base,
-		Options:       coreOpts,
-		Logger:        logger,
-		Handlers:      deps.Handlers,
-		FS:            deps.FS,
-		Shell:         deps.Shell,
-		Clock:         deps.Clock,
-	})
+	if opts.Validate || opts.Plan {
+		dispatcher, err := newDispatcher(base, coreOpts, logger, deps)
+		if err != nil {
+			logger.Error(err.Error())
+			return ErrExit
+		}
+		plan, err := dispatcher.Plan(tasks)
+		if err != nil {
+			logger.Error(err.Error())
+			return ErrExit
+		}
+		if opts.Plan {
+			if err := writePlanOutput(stdout, opts.Output, plan, len(tasks), len(opts.ConfigFiles), base); err != nil {
+				logger.Error(err.Error())
+				return ErrExit
+			}
+			return nil
+		}
+		logger.Action(validateSummary(len(tasks), len(opts.ConfigFiles), len(plan.Operations), base))
+		return nil
+	}
+	if err := deps.Chdir(base); err != nil {
+		logger.Error(err.Error())
+		return ErrExit
+	}
+	logger.Action(runSummary(len(tasks), len(opts.ConfigFiles), base, opts.DryRun))
+	dispatcher, err := newDispatcher(base, coreOpts, logger, deps)
 	if err != nil {
 		logger.Error(err.Error())
 		return ErrExit
@@ -120,6 +137,18 @@ func Run(ctx context.Context, opts Options, stdout io.Writer, deps Dependencies)
 	return ErrExit
 }
 
+func newDispatcher(base string, coreOpts core.Options, logger *log.Logger, deps Dependencies) (*core.Dispatcher, error) {
+	return core.NewDispatcher(core.DispatcherConfig{
+		BaseDirectory: base,
+		Options:       coreOpts,
+		Logger:        logger,
+		Handlers:      deps.Handlers,
+		FS:            deps.FS,
+		Shell:         deps.Shell,
+		Clock:         deps.Clock,
+	})
+}
+
 func runSummary(taskCount, configCount int, base string, dryRun bool) string {
 	mode := "apply"
 	if dryRun {
@@ -130,6 +159,16 @@ func runSummary(taskCount, configCount int, base string, dryRun bool) string {
 		mode,
 		taskCount,
 		configCount,
+		base,
+	)
+}
+
+func validateSummary(taskCount, configCount, operationCount int, base string) string {
+	return fmt.Sprintf(
+		"Configuration is valid: %d task(s), %d config file(s), %d planned operation(s), base %s",
+		taskCount,
+		configCount,
+		operationCount,
 		base,
 	)
 }

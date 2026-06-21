@@ -4,10 +4,79 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
 type Task map[string]any
+
+// Action is one directive entry from a configuration task.
+type Action struct {
+	Directive string
+	Data      any
+}
+
+const taskActionOrderKey = "\x00dotbot-go:action-order"
+
+type taskActionOrder []string
+
+type orderedPair struct {
+	key   string
+	value any
+}
+
+type orderedMap []orderedPair
+
+// NewTask builds a task with explicit directive order.
+func NewTask(actions ...Action) Task {
+	task := Task{}
+	order := make(taskActionOrder, 0, len(actions))
+	seen := map[string]bool{}
+	for _, action := range actions {
+		if action.Directive == "" {
+			continue
+		}
+		if !seen[action.Directive] {
+			order = append(order, action.Directive)
+			seen[action.Directive] = true
+		}
+		task[action.Directive] = action.Data
+	}
+	if len(order) > 0 {
+		task[taskActionOrderKey] = order
+	}
+	return task
+}
+
+// Actions returns task directives in source order when available.
+func (t Task) Actions() []Action {
+	if order, ok := t[taskActionOrderKey].(taskActionOrder); ok {
+		actions := make([]Action, 0, len(order))
+		for _, directive := range order {
+			data, ok := t[directive]
+			if !ok {
+				continue
+			}
+			actions = append(actions, Action{Directive: directive, Data: data})
+		}
+		return actions
+	}
+
+	keys := make([]string, 0, len(t))
+	for key := range t {
+		if key == taskActionOrderKey {
+			continue
+		}
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	actions := make([]Action, 0, len(keys))
+	for _, key := range keys {
+		actions = append(actions, Action{Directive: key, Data: t[key]})
+	}
+	return actions
+}
 
 type Parser interface {
 	Parse(path string, data []byte) (any, error)
@@ -33,7 +102,6 @@ func DefaultRegistry() *Registry {
 	r.Register([]string{".json"}, JSONParser{})
 	r.Register([]string{".json5"}, JSON5Parser{})
 	r.Register([]string{".toml"}, TOMLParser{})
-	r.Register([]string{".conf", ".hocon"}, HOCONParser{})
 	return r
 }
 
@@ -102,7 +170,9 @@ func tasksFromRaw(path string, raw any) ([]Task, error) {
 	}
 	list, ok := raw.([]any)
 	if !ok {
-		if m, isMap := raw.(map[string]any); isMap {
+		if m, isMap := raw.(orderedMap); isMap {
+			list, ok = taskListFromOrderedMap(m)
+		} else if m, isMap := raw.(map[string]any); isMap {
 			list, ok = taskListFromMap(m)
 		}
 	}
@@ -111,13 +181,48 @@ func tasksFromRaw(path string, raw any) ([]Task, error) {
 	}
 	tasks := make([]Task, 0, len(list))
 	for _, item := range list {
-		m, ok := normalizeValue(item).(map[string]any)
-		if !ok {
+		item = normalizeValue(item)
+		switch m := item.(type) {
+		case orderedMap:
+			tasks = append(tasks, taskFromOrderedMap(m))
+		case map[string]any:
+			tasks = append(tasks, Task(m))
+		default:
 			return nil, fmt.Errorf("configuration task in %q must be a mapping", path)
 		}
-		tasks = append(tasks, Task(m))
 	}
 	return tasks, nil
+}
+
+func taskFromOrderedMap(m orderedMap) Task {
+	actions := make([]Action, 0, len(m))
+	for _, pair := range m {
+		actions = append(actions, Action{
+			Directive: pair.key,
+			Data:      plainValue(pair.value),
+		})
+	}
+	return NewTask(actions...)
+}
+
+func taskListFromOrderedMap(m orderedMap) ([]any, bool) {
+	for _, key := range []string{"tasks", "task"} {
+		if value, ok := orderedMapValue(m, key); ok {
+			if list, ok := normalizeValue(value).([]any); ok {
+				return list, true
+			}
+		}
+	}
+	return nil, false
+}
+
+func orderedMapValue(m orderedMap, key string) (any, bool) {
+	for _, pair := range m {
+		if pair.key == key {
+			return pair.value, true
+		}
+	}
+	return nil, false
 }
 
 func taskListFromMap(m map[string]any) ([]any, bool) {
@@ -131,6 +236,15 @@ func taskListFromMap(m map[string]any) ([]any, bool) {
 
 func normalizeValue(v any) any {
 	switch t := v.(type) {
+	case orderedMap:
+		out := make(orderedMap, 0, len(t))
+		for _, pair := range t {
+			out = append(out, orderedPair{
+				key:   pair.key,
+				value: normalizeValue(pair.value),
+			})
+		}
+		return out
 	case []any:
 		out := make([]any, 0, len(t))
 		for _, item := range t {
@@ -153,6 +267,31 @@ func normalizeValue(v any) any {
 		out := make(map[string]any, len(t))
 		for key, value := range t {
 			out[fmt.Sprint(key)] = normalizeValue(value)
+		}
+		return out
+	default:
+		return v
+	}
+}
+
+func plainValue(v any) any {
+	switch t := v.(type) {
+	case orderedMap:
+		out := make(map[string]any, len(t))
+		for _, pair := range t {
+			out[pair.key] = plainValue(pair.value)
+		}
+		return out
+	case []any:
+		out := make([]any, 0, len(t))
+		for _, item := range t {
+			out = append(out, plainValue(item))
+		}
+		return out
+	case map[string]any:
+		out := make(map[string]any, len(t))
+		for key, value := range t {
+			out[key] = plainValue(value)
 		}
 		return out
 	default:

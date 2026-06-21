@@ -2,36 +2,37 @@ package core
 
 import (
 	"fmt"
-	"path/filepath"
 
 	"dotbot-go/internal/expand"
 )
 
 func processOneLink(ctx *Context, target, linkName string, opts linkOptions, globbed bool) bool {
 	success := true
+	link := resolveLink(ctx, target, linkName, opts)
 	if opts.Create {
-		success = createParent(ctx, linkName) && success
+		success = createParent(ctx, link.linkName) && success
 	}
-	if !globbed && !opts.IgnoreMissing && !ctx.FS.Exists(filepath.Join(baseDir(ctx, opts.Canonicalize), target)) {
-		ctx.Log.Warning(fmt.Sprintf("Nonexistent target %s -> %s", linkName, target))
+	if !globbed && !opts.IgnoreMissing && !ctx.FS.Exists(link.absoluteTarget) {
+		ctx.Log.Warning(fmt.Sprintf("Nonexistent target %s -> %s", link.linkName, link.target))
 		return false
 	}
 	didBackup := false
 	didDelete := false
 	backupSuccess := true
 	if opts.Backup {
-		didBackup, backupSuccess = backup(ctx, linkName)
+		didBackup, backupSuccess = backup(ctx, link)
 		success = backupSuccess && success
 	}
 	if (opts.Force || opts.Relink) && !(didBackup && backupSuccess) {
 		var deleteSuccess bool
-		didDelete, deleteSuccess = deleteLink(ctx, target, linkName, opts)
+		didDelete, deleteSuccess = deleteLink(ctx, link, opts)
 		success = deleteSuccess && success
 	}
-	return createLink(ctx, target, linkName, opts, opts.IgnoreMissing, didBackup || didDelete) && success
+	return createLink(ctx, link, opts, opts.IgnoreMissing, didBackup || didDelete) && success
 }
 
-func backup(ctx *Context, path string) (bool, bool) {
+func backup(ctx *Context, link linkResolution) (bool, bool) {
+	path := link.linkName
 	if ctx.FS.Exists(expand.Path(path)) && !ctx.FS.IsSymlink(expand.Path(path)) {
 		timestamp := ctx.Clock().Format("20060102-150405")
 		backupName := path + ".dotbot-backup." + timestamp
@@ -51,19 +52,15 @@ func backup(ctx *Context, path string) (bool, bool) {
 	return false, true
 }
 
-func deleteLink(ctx *Context, target, path string, opts linkOptions) (bool, bool) {
+func deleteLink(ctx *Context, link linkResolution, opts linkOptions) (bool, bool) {
 	removed := false
-	targetAbs := filepath.Join(baseDir(ctx, opts.Canonicalize), target)
-	fullpath := expand.Abs(path)
+	path := link.linkName
+	fullpath := link.linkPath
 	if ctx.FS.Exists(expand.Path(path)) && !ctx.FS.IsSymlink(expand.Path(path)) {
-		if same, err := ctx.FS.SameFile(fullpath, targetAbs); err == nil && same {
-			ctx.Log.Warning(fmt.Sprintf("%s appears to be the same file as %s.", path, targetAbs))
+		if same, err := ctx.FS.SameFile(fullpath, link.absoluteTarget); err == nil && same {
+			ctx.Log.Warning(fmt.Sprintf("%s appears to be the same file as %s.", path, link.absoluteTarget))
 			return false, false
 		}
-	}
-	targetPath := targetAbs
-	if opts.Relative {
-		targetPath = relativePath(targetAbs, fullpath)
 	}
 	shouldRemove := false
 	if ctx.FS.IsSymlink(expand.Path(path)) {
@@ -73,7 +70,7 @@ func deleteLink(ctx *Context, target, path string, opts linkOptions) (bool, bool
 			ctx.Log.Debug(err.Error())
 			return false, false
 		}
-		shouldRemove = current != targetPath
+		shouldRemove = current != link.targetPath
 	} else if ctx.FS.Lexists(expand.Path(path)) {
 		shouldRemove = true
 	}
@@ -107,61 +104,55 @@ func deleteLink(ctx *Context, target, path string, opts linkOptions) (bool, bool
 	return removed, true
 }
 
-func createLink(ctx *Context, target, linkName string, opts linkOptions, ignoreMissing, assumeGone bool) bool {
-	linkPath := expand.Abs(linkName)
-	absoluteTarget := filepath.Join(baseDir(ctx, opts.Canonicalize), target)
-	targetPath := absoluteTarget
-	if opts.Relative {
-		targetPath = relativePath(absoluteTarget, linkPath)
-	}
-	linkExists := ctx.FS.Lexists(expand.Path(linkName))
-	if (!linkExists || (ctx.Options.DryRun && assumeGone)) && (ignoreMissing || ctx.FS.Exists(absoluteTarget)) {
+func createLink(ctx *Context, link linkResolution, opts linkOptions, ignoreMissing, assumeGone bool) bool {
+	linkExists := ctx.FS.Lexists(expand.Path(link.linkName))
+	if (!linkExists || (ctx.Options.DryRun && assumeGone)) && (ignoreMissing || ctx.FS.Exists(link.absoluteTarget)) {
 		if ctx.Options.DryRun {
-			ctx.Log.Action(fmt.Sprintf("Would create %s %s -> %s", opts.Type, filepath.Clean(linkName), targetPath))
+			ctx.Log.Action(fmt.Sprintf("Would create %s %s -> %s", opts.Type, link.cleanLinkName(), link.targetPath))
 			return true
 		}
 		var err error
 		if opts.Type == "symlink" {
-			err = ctx.FS.Symlink(targetPath, linkPath)
+			err = ctx.FS.Symlink(link.targetPath, link.linkPath)
 		} else {
-			err = ctx.FS.Link(absoluteTarget, linkPath)
+			err = ctx.FS.Link(link.absoluteTarget, link.linkPath)
 		}
 		if err != nil {
-			ctx.Log.Warning(fmt.Sprintf("Linking failed %s -> %s", filepath.Clean(linkName), targetPath))
+			ctx.Log.Warning(fmt.Sprintf("Linking failed %s -> %s", link.cleanLinkName(), link.targetPath))
 			ctx.Log.Debug(err.Error())
 			return false
 		}
-		ctx.Log.Action(fmt.Sprintf("Creating %s %s -> %s", opts.Type, filepath.Clean(linkName), targetPath))
+		ctx.Log.Action(fmt.Sprintf("Creating %s %s -> %s", opts.Type, link.cleanLinkName(), link.targetPath))
 		return true
 	}
-	if ctx.FS.IsSymlink(expand.Path(linkName)) {
+	if ctx.FS.IsSymlink(expand.Path(link.linkName)) {
 		if opts.Type == "symlink" {
-			current, err := ctx.FS.Readlink(expand.Path(linkName))
+			current, err := ctx.FS.Readlink(expand.Path(link.linkName))
 			if err != nil {
-				ctx.Log.Warning(fmt.Sprintf("Failed to inspect link %s", filepath.Clean(linkName)))
+				ctx.Log.Warning(fmt.Sprintf("Failed to inspect link %s", link.cleanLinkName()))
 				ctx.Log.Debug(err.Error())
 				return false
 			}
-			if current == targetPath {
-				ctx.Log.Info(fmt.Sprintf("Link exists %s -> %s", filepath.Clean(linkName), targetPath))
+			if current == link.targetPath {
+				ctx.Log.Info(fmt.Sprintf("Link exists %s -> %s", link.cleanLinkName(), link.targetPath))
 				return true
 			}
 			term := "Incorrect"
-			if !ctx.FS.Exists(expand.Path(linkName)) {
+			if !ctx.FS.Exists(expand.Path(link.linkName)) {
 				term = "Invalid"
 			}
-			ctx.Log.Warning(fmt.Sprintf("%s link %s -> %s", term, filepath.Clean(linkName), current))
+			ctx.Log.Warning(fmt.Sprintf("%s link %s -> %s", term, link.cleanLinkName(), current))
 			return false
 		}
-		ctx.Log.Warning(fmt.Sprintf("%s already exists but is a symbolic link, not a hard link", filepath.Clean(linkName)))
+		ctx.Log.Warning(fmt.Sprintf("%s already exists but is a symbolic link, not a hard link", link.cleanLinkName()))
 		return false
 	}
 	if opts.Type == "hardlink" {
-		if same, err := ctx.FS.SameFile(linkPath, absoluteTarget); err == nil && same {
-			ctx.Log.Info(fmt.Sprintf("Link exists %s -> %s", filepath.Clean(linkName), targetPath))
+		if same, err := ctx.FS.SameFile(link.linkPath, link.absoluteTarget); err == nil && same {
+			ctx.Log.Info(fmt.Sprintf("Link exists %s -> %s", link.cleanLinkName(), link.targetPath))
 			return true
 		}
 	}
-	ctx.Log.Warning(fmt.Sprintf("%s already exists but is a regular file or directory", filepath.Clean(linkName)))
+	ctx.Log.Warning(fmt.Sprintf("%s already exists but is a regular file or directory", link.cleanLinkName()))
 	return false
 }
