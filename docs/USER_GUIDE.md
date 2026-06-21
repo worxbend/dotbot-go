@@ -60,7 +60,36 @@ Create this file:
     - [git submodule update --init --recursive, Installing submodules]
 ```
 
-## Step 3: Preview Changes
+## Step 3: Validate The Config
+
+Run:
+
+```bash
+dotbot-go validate -d ~/.dotfiles -c ~/.dotfiles/install.conf.yaml
+```
+
+Validation checks that the config can be read, that directive payloads have
+supported shapes, and how many operations would be planned. It does not create
+directories, links, or run shell commands.
+
+## Step 4: Inspect Planned Operations
+
+Run:
+
+```bash
+dotbot-go plan -d ~/.dotfiles -c ~/.dotfiles/install.conf.yaml
+```
+
+For scripts and automation, use JSON:
+
+```bash
+dotbot-go plan -d ~/.dotfiles -c ~/.dotfiles/install.conf.yaml --output json
+```
+
+Planning prints the operation list without creating directories, links, or
+running shell commands.
+
+## Step 5: Preview Changes
 
 Run:
 
@@ -70,7 +99,7 @@ dotbot-go -d ~/.dotfiles -c ~/.dotfiles/install.conf.yaml --dry-run
 
 Read the output. It should say what would be created, linked, cleaned, or run.
 
-## Step 4: Apply Changes
+## Step 6: Apply Changes
 
 Run:
 

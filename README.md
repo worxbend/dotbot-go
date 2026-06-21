@@ -82,7 +82,32 @@ In plain English, this means:
 - link files from the repo into your home directory
 - update Git submodules
 
-### 3. Preview First
+### 3. Validate The Config
+
+Check that the config file can be parsed and only uses supported directive shapes:
+
+```bash
+./bin/dotbot validate -c install.conf.yaml
+```
+
+Validation also reports how many operations would be planned. It does not create
+directories, links, or run shell commands.
+
+### 4. Inspect The Plan
+
+Print the operations that the config expands into:
+
+```bash
+./bin/dotbot plan -c install.conf.yaml
+```
+
+Use JSON when another tool needs to consume the plan:
+
+```bash
+./bin/dotbot plan -c install.conf.yaml --output json
+```
+
+### 5. Preview First
 
 Always run a dry run first:
 
@@ -92,7 +117,7 @@ Always run a dry run first:
 
 Dry run prints what would happen without changing your filesystem.
 
-### 4. Apply The Config
+### 6. Apply The Config
 
 When the preview looks correct:
 
@@ -137,7 +162,6 @@ The `-d` option sets the base directory. Relative paths in your config, such as 
 | JSON | `.json` | Strict machine-generated config |
 | JSON5 | `.json5` | JSON with comments and trailing commas |
 | TOML | `.toml` | Users who prefer TOML syntax |
-| HOCON | `.conf`, `.hocon` | HOCON-based config workflows |
 
 Complete examples:
 
@@ -145,9 +169,8 @@ Complete examples:
 - [JSON example](examples/install.json)
 - [JSON5 example](examples/install.json5)
 - [TOML example](examples/install.toml)
-- [HOCON example](examples/install.hocon)
 
-YAML, JSON, and JSON5 can use a top-level task list. TOML and HOCON should put the task list under `tasks`.
+YAML, JSON, and JSON5 can use a top-level task list. TOML should put the task list under `tasks`.
 
 More detail: [Config Formats Guide](docs/CONFIG_FORMATS.md)
 
@@ -166,6 +189,26 @@ Directives are the actions in your config file. They run in the order you write 
 More detail: [User Guide](docs/USER_GUIDE.md)
 
 ## Common Commands
+
+Validate without applying changes:
+
+```bash
+dotbot-go validate -c install.conf.yaml
+```
+
+This reports whether the configuration is valid and how many operations would be planned.
+
+Print planned operations:
+
+```bash
+dotbot-go plan -c install.conf.yaml
+```
+
+Print planned operations as JSON:
+
+```bash
+dotbot-go plan -c install.conf.yaml --output json
+```
 
 Preview without changing files:
 
@@ -241,7 +284,7 @@ Common problems:
 | Problem | What To Check |
 | --- | --- |
 | `unsupported config file format` | File extension must be one of the supported extensions |
-| `configuration file must be a list of tasks` | YAML/JSON/JSON5 should be a list, TOML/HOCON should use `tasks` |
+| `configuration file must be a list of tasks` | YAML/JSON/JSON5 should be a list, TOML should use `tasks` |
 | Link target does not exist | Make sure the source file exists in your dotfiles repo |
 | Existing file blocks a link | Add `backup: true`, move the file manually, or intentionally use `force: true` |
 | Shell command fails | Run with `-vv` to see command output |
