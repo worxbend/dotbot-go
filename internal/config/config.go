@@ -8,12 +8,18 @@ import (
 	"strings"
 )
 
+// Task is one configuration task, keyed by directive name.
+//
+// Tasks created by ordered parsers carry hidden directive-order metadata so
+// planning and dispatch preserve the order written by the user.
 type Task map[string]any
 
 // Action is one directive entry from a configuration task.
 type Action struct {
+	// Directive names the built-in directive, such as link, create, shell, or clean.
 	Directive string
-	Data      any
+	// Data is the directive payload after parser-specific values have been normalized.
+	Data any
 }
 
 const taskActionOrderKey = "\x00dotbot-go:action-order"
@@ -78,24 +84,31 @@ func (t Task) Actions() []Action {
 	return actions
 }
 
+// Parser converts one config file into the raw representation consumed by Reader.
 type Parser interface {
+	// Parse decodes data from path while preserving directive order when possible.
 	Parse(path string, data []byte) (any, error)
 }
 
+// ParserFunc adapts a function to the Parser interface.
 type ParserFunc func(path string, data []byte) (any, error)
 
+// Parse calls f(path, data).
 func (f ParserFunc) Parse(path string, data []byte) (any, error) {
 	return f(path, data)
 }
 
+// Registry maps file extensions to parsers.
 type Registry struct {
 	parsers map[string]Parser
 }
 
+// NewRegistry creates an empty parser registry.
 func NewRegistry() *Registry {
 	return &Registry{parsers: map[string]Parser{}}
 }
 
+// DefaultRegistry creates a registry for YAML, JSON, JSON5, and TOML configs.
 func DefaultRegistry() *Registry {
 	r := NewRegistry()
 	r.Register([]string{".yaml", ".yml"}, YAMLParser{})
@@ -105,22 +118,26 @@ func DefaultRegistry() *Registry {
 	return r
 }
 
+// Register associates each extension with parser.
 func (r *Registry) Register(extensions []string, parser Parser) {
 	for _, ext := range extensions {
 		r.parsers[normalizeExtension(ext)] = parser
 	}
 }
 
+// ParserFor returns the parser registered for path's extension.
 func (r *Registry) ParserFor(path string) (Parser, bool) {
 	parser, ok := r.parsers[normalizeExtension(filepath.Ext(path))]
 	return parser, ok
 }
 
+// Reader reads config files through a registry.
 type Reader struct {
 	registry *Registry
 	readFile func(string) ([]byte, error)
 }
 
+// NewReader creates a Reader, using DefaultRegistry when registry is nil.
 func NewReader(registry *Registry) *Reader {
 	if registry == nil {
 		registry = DefaultRegistry()
@@ -131,10 +148,12 @@ func NewReader(registry *Registry) *Reader {
 	}
 }
 
+// Read reads all paths with the default registry.
 func Read(paths []string) ([]Task, error) {
 	return NewReader(nil).Read(paths)
 }
 
+// Read reads all paths in order and concatenates their tasks.
 func (r *Reader) Read(paths []string) ([]Task, error) {
 	tasks := []Task{}
 	for _, path := range paths {

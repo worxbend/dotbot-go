@@ -8,11 +8,16 @@ import (
 	"dotbot-go/internal/expand"
 )
 
+// LinkHandler implements the link directive.
 type LinkHandler struct{}
 
+// CanHandle reports whether directive is link.
 func (LinkHandler) CanHandle(directive string) bool { return directive == "link" }
-func (LinkHandler) SupportsDryRun() bool            { return true }
 
+// SupportsDryRun reports that link can preview link creation and replacement.
+func (LinkHandler) SupportsDryRun() bool { return true }
+
+// Validate checks link directive data without touching the filesystem.
 func (LinkHandler) Validate(ctx *Context, directive string, data any) error {
 	links, ok := asMap(data)
 	if !ok {
@@ -45,6 +50,7 @@ func (LinkHandler) Validate(ctx *Context, directive string, data any) error {
 	return nil
 }
 
+// Plan expands link directive data into link operations.
 func (h LinkHandler) Plan(ctx *Context, directive string, data any) ([]Operation, error) {
 	if err := h.Validate(ctx, directive, data); err != nil {
 		return nil, err
@@ -68,6 +74,7 @@ func (h LinkHandler) Plan(ctx *Context, directive string, data any) ([]Operation
 	return operations, nil
 }
 
+// Handle creates or updates links requested by the link directive.
 func (LinkHandler) Handle(ctx *Context, directive string, data any) (bool, error) {
 	links, ok := asMap(data)
 	if !ok {

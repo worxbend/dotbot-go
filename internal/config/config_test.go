@@ -183,6 +183,63 @@ func TestReadPreservesJSON5TaskDirectiveOrder(t *testing.T) {
 	}
 }
 
+func TestReadPreservesJSON5OrderWithDelimitersInStringsAndComments(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "install.json5")
+	if err := os.WriteFile(path, []byte(`[
+  {
+    // Delimiters in comments must not close the shell value: ] } ,
+    shell: [
+      ["printf '{still a string}, with comma'", "message, with ] delimiters"],
+    ],
+    /* Delimiters in block comments must not close the create value: ] } , */
+    create: [
+      "tmp-{literal},[]",
+    ],
+    clean: ["~"],
+  },
+]`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	tasks, err := Read([]string{path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 1 {
+		t.Fatalf("len(tasks) = %d, want 1", len(tasks))
+	}
+	got := actionDirectives(tasks[0].Actions())
+	expected := []string{"shell", "create", "clean"}
+	if strings.Join(got, ",") != strings.Join(expected, ",") {
+		t.Fatalf("action order = %#v, want %#v", got, expected)
+	}
+}
+
+func TestReadPreservesJSON5QuotedKeysWithDelimiters(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "install.json5")
+	if err := os.WriteFile(path, []byte(`[
+  {
+    "shell:with,delimiters}": ["true"],
+    create: ["tmp"],
+  },
+]`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	tasks, err := Read([]string{path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 1 {
+		t.Fatalf("len(tasks) = %d, want 1", len(tasks))
+	}
+	got := actionDirectives(tasks[0].Actions())
+	expected := []string{"shell:with,delimiters}", "create"}
+	if strings.Join(got, ",") != strings.Join(expected, ",") {
+		t.Fatalf("action order = %#v, want %#v", got, expected)
+	}
+}
+
 func TestReadPreservesTOMLTaskDirectiveOrder(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "install.toml")
 	if err := os.WriteFile(path, []byte(`

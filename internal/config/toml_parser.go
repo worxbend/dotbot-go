@@ -7,8 +7,10 @@ import (
 	tomlunstable "github.com/pelletier/go-toml/v2/unstable"
 )
 
+// TOMLParser parses TOML configuration files and preserves task directive order.
 type TOMLParser struct{}
 
+// Parse decodes TOML into normalized raw values.
 func (TOMLParser) Parse(path string, data []byte) (any, error) {
 	var raw any
 	if err := toml.Unmarshal(data, &raw); err != nil {

@@ -10,29 +10,49 @@ import (
 	"dotbot-go/internal/shell"
 )
 
+// Options controls directive filtering and execution behavior.
 type Options struct {
-	Only          []string
-	Skip          []string
+	// Only limits dispatch and planning to the named directives.
+	Only []string
+	// Skip excludes the named directives from dispatch and planning.
+	Skip []string
+	// ExitOnFailure stops dispatch after the first handler failure.
 	ExitOnFailure bool
-	DryRun        bool
-	Verbose       int
-	ShellTimeout  time.Duration
+	// DryRun previews supported handlers without mutating the filesystem or shell.
+	DryRun bool
+	// Verbose increases handler detail; values greater than one expose shell output.
+	Verbose int
+	// ShellTimeout bounds each shell command when greater than zero.
+	ShellTimeout time.Duration
 }
 
+// Context carries shared state and adapters for directive handlers.
 type Context struct {
-	RunContext    context.Context
+	// RunContext is the cancellation context used by shell commands and dispatch.
+	RunContext context.Context
+	// BaseDirectory is the absolute repository root for relative operations.
 	BaseDirectory string
-	Defaults      map[string]any
-	Options       Options
-	Log           *log.Logger
-	FS            fsops.FS
-	Shell         shell.Runner
-	Clock         func() time.Time
+	// Defaults holds the currently active defaults directive values.
+	Defaults map[string]any
+	// Options are the execution controls for this dispatch or plan.
+	Options Options
+	// Log writes user-facing handler messages.
+	Log *log.Logger
+	// FS performs filesystem operations.
+	FS fsops.FS
+	// Shell runs shell directive commands.
+	Shell shell.Runner
+	// Clock supplies timestamps for backup names.
+	Clock func() time.Time
 }
 
+// Handler executes one directive type.
 type Handler interface {
+	// CanHandle reports whether this handler owns directive.
 	CanHandle(directive string) bool
+	// SupportsDryRun reports whether Handle can safely preview work.
 	SupportsDryRun() bool
+	// Handle applies directive data and returns whether the action succeeded.
 	Handle(ctx *Context, directive string, data any) (bool, error)
 }
 
@@ -46,6 +66,7 @@ type planningHandler interface {
 	Plan(ctx *Context, directive string, data any) ([]Operation, error)
 }
 
+// BuiltIns returns the built-in directive handlers in dispatch order.
 func BuiltIns() []Handler {
 	return []Handler{
 		CreateHandler{},

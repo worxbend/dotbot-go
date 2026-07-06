@@ -7,11 +7,16 @@ import (
 	"dotbot-go/internal/expand"
 )
 
+// CreateHandler implements the create directive.
 type CreateHandler struct{}
 
+// CanHandle reports whether directive is create.
 func (CreateHandler) CanHandle(directive string) bool { return directive == "create" }
-func (CreateHandler) SupportsDryRun() bool            { return true }
 
+// SupportsDryRun reports that create can preview directory creation.
+func (CreateHandler) SupportsDryRun() bool { return true }
+
+// Validate checks create directive data without touching the filesystem.
 func (CreateHandler) Validate(ctx *Context, directive string, data any) error {
 	if paths, ok := asList(data); ok {
 		for _, item := range paths {
@@ -36,6 +41,7 @@ func (CreateHandler) Validate(ctx *Context, directive string, data any) error {
 	return fmt.Errorf("create directive must be a list or map")
 }
 
+// Plan expands create directive data into directory operations.
 func (h CreateHandler) Plan(ctx *Context, directive string, data any) ([]Operation, error) {
 	if err := h.Validate(ctx, directive, data); err != nil {
 		return nil, err
@@ -55,6 +61,7 @@ func (h CreateHandler) Plan(ctx *Context, directive string, data any) ([]Operati
 	return operations, nil
 }
 
+// Handle creates directories requested by the create directive.
 func (CreateHandler) Handle(ctx *Context, directive string, data any) (bool, error) {
 	success := true
 	defaults, _ := asMap(ctx.Defaults["create"])

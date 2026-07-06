@@ -6,8 +6,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// YAMLParser parses YAML configuration files while preserving mapping order.
 type YAMLParser struct{}
 
+// Parse decodes YAML into normalized raw values.
 func (YAMLParser) Parse(path string, data []byte) (any, error) {
 	var node yaml.Node
 	if err := yaml.Unmarshal(data, &node); err != nil {

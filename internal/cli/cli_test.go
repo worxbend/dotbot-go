@@ -67,8 +67,100 @@ func TestExecuteHelpUsesStyledSections(t *testing.T) {
 	if strings.Contains(got, "Compatibility") || strings.Contains(got, "--plugin") {
 		t.Fatalf("help includes plugin support: %q", got)
 	}
+	if strings.Contains(got, "--super-quiet") {
+		t.Fatalf("help includes hidden deprecated flag: %q", got)
+	}
 	if stderr.Len() != 0 {
 		t.Fatalf("stderr = %q", stderr.String())
+	}
+}
+
+func TestExecuteHelpExamplesByCommand(t *testing.T) {
+	tests := []struct {
+		name     string
+		args     []string
+		examples []string
+	}{
+		{
+			name: "root",
+			args: []string{"--help"},
+			examples: []string{
+				"dotbot-go -c install.conf.yaml",
+				"dotbot-go validate -c install.conf.yaml",
+				"dotbot-go plan -c install.conf.yaml --output json",
+				"dotbot-go -d ~/.dotfiles -c ~/.dotfiles/install.conf.yaml --dry-run",
+				"dotbot-go -c install.conf.yaml --only link -vv",
+			},
+		},
+		{
+			name: "validate",
+			args: []string{"validate", "--help"},
+			examples: []string{
+				"dotbot-go validate -c install.conf.yaml",
+				"dotbot-go validate -d ~/.dotfiles -c ~/.dotfiles/install.conf.yaml",
+				"dotbot-go validate -c install.conf.yaml --only link",
+			},
+		},
+		{
+			name: "plan",
+			args: []string{"plan", "--help"},
+			examples: []string{
+				"dotbot-go plan -c install.conf.yaml",
+				"dotbot-go plan -d ~/.dotfiles -c ~/.dotfiles/install.conf.yaml",
+				"dotbot-go plan -c install.conf.yaml --output json",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var stdout bytes.Buffer
+			var stderr bytes.Buffer
+			code := Execute(tt.args, &stdout, &stderr)
+			if code != 0 {
+				t.Fatalf("code = %d, want 0", code)
+			}
+			got := stdout.String()
+			var want strings.Builder
+			want.WriteString("Examples\n")
+			for _, example := range tt.examples {
+				want.WriteString("  ")
+				want.WriteString(example)
+				want.WriteString("\n")
+			}
+			want.WriteString("\n")
+			if !strings.Contains(got, want.String()) {
+				t.Fatalf("missing examples block:\n%s\nhelp:\n%s", want.String(), got)
+			}
+			if stderr.Len() != 0 {
+				t.Fatalf("stderr = %q", stderr.String())
+			}
+		})
+	}
+}
+
+func TestExecuteSuperQuietIsHiddenCompatibilityFlag(t *testing.T) {
+	dir := t.TempDir()
+	createdPath := filepath.Join(dir, "created")
+	configPath := filepath.Join(dir, "install.conf.yaml")
+	if err := os.WriteFile(configPath, []byte("- create:\n  - "+createdPath+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := Execute([]string{"--super-quiet", "-c", configPath, "--dry-run"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("code = %d, want 0; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout = %q, want quiet output", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q", stderr.String())
+	}
+	if _, err := os.Stat(createdPath); !os.IsNotExist(err) {
+		t.Fatalf("dry run created path or unexpected stat error: %v", err)
 	}
 }
 

@@ -6,8 +6,10 @@ import (
 	"github.com/titanous/json5"
 )
 
+// JSON5Parser parses JSON5 configuration files while preserving object order.
 type JSON5Parser struct{}
 
+// Parse decodes JSON5 into normalized raw values.
 func (JSON5Parser) Parse(path string, data []byte) (any, error) {
 	var raw any
 	if err := json5.Unmarshal(data, &raw); err != nil {
@@ -151,57 +153,70 @@ func json5ObjectKey(data []byte) (string, error) {
 	return "", fmt.Errorf("json5 object key is empty")
 }
 
+type json5ScanState struct {
+	quote        byte
+	escaped      bool
+	lineComment  bool
+	blockComment bool
+}
+
+// consumeHidden advances over bytes that should be ignored by delimiter
+// scanning because they are inside a JSON5 string or comment.
+func (s *json5ScanState) consumeHidden(data []byte, i int) (int, bool) {
+	c := data[i]
+
+	switch {
+	case s.lineComment:
+		if c == '\n' || c == '\r' {
+			s.lineComment = false
+		}
+		return i, true
+	case s.blockComment:
+		if c == '*' && i+1 < len(data) && data[i+1] == '/' {
+			s.blockComment = false
+			return i + 1, true
+		}
+		return i, true
+	case s.quote != 0:
+		if s.escaped {
+			s.escaped = false
+			return i, true
+		}
+		if c == '\\' {
+			s.escaped = true
+			return i, true
+		}
+		if c == s.quote {
+			s.quote = 0
+		}
+		return i, true
+	}
+
+	if c == '"' || c == '\'' {
+		s.quote = c
+		return i, true
+	}
+	if c == '/' && i+1 < len(data) {
+		switch data[i+1] {
+		case '/':
+			s.lineComment = true
+			return i + 1, true
+		case '*':
+			s.blockComment = true
+			return i + 1, true
+		}
+	}
+	return i, false
+}
+
 func json5ObjectKeyEnd(data []byte, start int) (int, error) {
-	quote := byte(0)
-	escaped := false
-	lineComment := false
-	blockComment := false
+	state := json5ScanState{}
 
 	for i := start; i < len(data); i++ {
 		c := data[i]
-
-		switch {
-		case lineComment:
-			if c == '\n' || c == '\r' {
-				lineComment = false
-			}
+		if next, ok := state.consumeHidden(data, i); ok {
+			i = next
 			continue
-		case blockComment:
-			if c == '*' && i+1 < len(data) && data[i+1] == '/' {
-				blockComment = false
-				i++
-			}
-			continue
-		case quote != 0:
-			if escaped {
-				escaped = false
-				continue
-			}
-			if c == '\\' {
-				escaped = true
-				continue
-			}
-			if c == quote {
-				quote = 0
-			}
-			continue
-		}
-
-		if c == '"' || c == '\'' {
-			quote = c
-			continue
-		}
-		if c == '/' && i+1 < len(data) {
-			switch data[i+1] {
-			case '/':
-				lineComment = true
-				i++
-				continue
-			case '*':
-				blockComment = true
-				i++
-				continue
-			}
 		}
 		if c == ':' {
 			return i, nil
@@ -216,56 +231,13 @@ func json5ObjectKeyEnd(data []byte, start int) (int, error) {
 
 func json5ValueEnd(data []byte, start int, closing byte) (end int, closed bool, err error) {
 	depth := 0
-	quote := byte(0)
-	escaped := false
-	lineComment := false
-	blockComment := false
+	state := json5ScanState{}
 
 	for i := start; i < len(data); i++ {
 		c := data[i]
-
-		switch {
-		case lineComment:
-			if c == '\n' || c == '\r' {
-				lineComment = false
-			}
+		if next, ok := state.consumeHidden(data, i); ok {
+			i = next
 			continue
-		case blockComment:
-			if c == '*' && i+1 < len(data) && data[i+1] == '/' {
-				blockComment = false
-				i++
-			}
-			continue
-		case quote != 0:
-			if escaped {
-				escaped = false
-				continue
-			}
-			if c == '\\' {
-				escaped = true
-				continue
-			}
-			if c == quote {
-				quote = 0
-			}
-			continue
-		}
-
-		if c == '"' || c == '\'' {
-			quote = c
-			continue
-		}
-		if c == '/' && i+1 < len(data) {
-			switch data[i+1] {
-			case '/':
-				lineComment = true
-				i++
-				continue
-			case '*':
-				blockComment = true
-				i++
-				continue
-			}
 		}
 
 		switch c {

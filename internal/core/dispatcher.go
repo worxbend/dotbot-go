@@ -13,21 +13,31 @@ import (
 	"dotbot-go/internal/shell"
 )
 
+// Dispatcher plans and applies ordered configuration tasks.
 type Dispatcher struct {
 	ctx      *Context
 	handlers []Handler
 }
 
+// DispatcherConfig provides dependencies and options for a Dispatcher.
 type DispatcherConfig struct {
+	// BaseDirectory is the repository root used by filesystem and shell handlers.
 	BaseDirectory string
-	Options       Options
-	Logger        *log.Logger
-	Handlers      []Handler
-	FS            fsops.FS
-	Shell         shell.Runner
-	Clock         func() time.Time
+	// Options control filtering, dry-run behavior, and failure handling.
+	Options Options
+	// Logger receives user-facing output; a discard logger is used when nil.
+	Logger *log.Logger
+	// Handlers overrides the built-in directive handler list when provided.
+	Handlers []Handler
+	// FS performs filesystem operations; OSFS is used when nil.
+	FS fsops.FS
+	// Shell runs shell commands; OSRunner is used when nil.
+	Shell shell.Runner
+	// Clock supplies timestamps for backup names; time.Now is used when nil.
+	Clock func() time.Time
 }
 
+// NewDispatcher builds a Dispatcher and validates that BaseDirectory exists.
 func NewDispatcher(cfg DispatcherConfig) (*Dispatcher, error) {
 	abs, err := filepath.Abs(cfg.BaseDirectory)
 	if err != nil {
@@ -72,6 +82,7 @@ func defaultLogger(logger *log.Logger) *log.Logger {
 	return log.New(io.Discard)
 }
 
+// Dispatch applies tasks in order.
 func (d *Dispatcher) Dispatch(ctx context.Context, tasks []config.Task) (bool, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -135,11 +146,13 @@ func (d *Dispatcher) Dispatch(ctx context.Context, tasks []config.Task) (bool, e
 	return success, nil
 }
 
+// Validate checks tasks by building a plan without applying operations.
 func (d *Dispatcher) Validate(tasks []config.Task) error {
 	_, err := d.Plan(tasks)
 	return err
 }
 
+// Plan expands tasks into operations without applying filesystem or shell changes.
 func (d *Dispatcher) Plan(tasks []config.Task) (Plan, error) {
 	d.ctx.Defaults = map[string]any{}
 	plan := Plan{Operations: []Operation{}}

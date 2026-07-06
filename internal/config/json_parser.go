@@ -7,8 +7,10 @@ import (
 	"io"
 )
 
+// JSONParser parses JSON configuration files while preserving object order.
 type JSONParser struct{}
 
+// Parse decodes JSON into normalized raw values.
 func (JSONParser) Parse(path string, data []byte) (any, error) {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	raw, err := jsonValue(decoder)

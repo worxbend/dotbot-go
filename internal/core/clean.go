@@ -8,11 +8,16 @@ import (
 	"dotbot-go/internal/expand"
 )
 
+// CleanHandler implements the clean directive.
 type CleanHandler struct{}
 
+// CanHandle reports whether directive is clean.
 func (CleanHandler) CanHandle(directive string) bool { return directive == "clean" }
-func (CleanHandler) SupportsDryRun() bool            { return true }
 
+// SupportsDryRun reports that clean can preview broken-link removal.
+func (CleanHandler) SupportsDryRun() bool { return true }
+
+// Validate checks clean directive data without touching the filesystem.
 func (CleanHandler) Validate(ctx *Context, directive string, data any) error {
 	if m, ok := asMap(data); ok {
 		for _, target := range sortedKeys(m) {
@@ -38,6 +43,7 @@ func (CleanHandler) Validate(ctx *Context, directive string, data any) error {
 	return nil
 }
 
+// Plan expands clean directive data into target operations.
 func (h CleanHandler) Plan(ctx *Context, directive string, data any) ([]Operation, error) {
 	if err := h.Validate(ctx, directive, data); err != nil {
 		return nil, err
@@ -57,6 +63,7 @@ func (h CleanHandler) Plan(ctx *Context, directive string, data any) ([]Operatio
 	return operations, nil
 }
 
+// Handle removes broken links according to clean directive rules.
 func (CleanHandler) Handle(ctx *Context, directive string, data any) (bool, error) {
 	success := true
 	defaults, _ := asMap(ctx.Defaults["clean"])

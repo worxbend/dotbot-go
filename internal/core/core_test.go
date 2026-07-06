@@ -13,6 +13,7 @@ import (
 	"dotbot-go/internal/config"
 	"dotbot-go/internal/fsops"
 	"dotbot-go/internal/log"
+	sh "dotbot-go/internal/shell"
 )
 
 func TestCreateAndLinkSymlink(t *testing.T) {
@@ -270,6 +271,84 @@ func TestShellDirectiveFailure(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "Command [exit 7] failed") {
 		t.Fatalf("missing shell warning: %s", out.String())
+	}
+}
+
+func TestShellDirectiveMergesDefaultsAndCommandOptions(t *testing.T) {
+	dir := t.TempDir()
+	var out bytes.Buffer
+	logger := log.New(&out)
+	logger.SetLevel(log.Debug)
+	runner := &recordingShellRunner{}
+	dispatcher, err := NewDispatcher(DispatcherConfig{
+		BaseDirectory: dir,
+		Options: Options{
+			ShellTimeout: 3 * time.Second,
+		},
+		Logger:   logger,
+		Handlers: BuiltIns(),
+		Shell:    runner,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	success, err := dispatcher.Dispatch(context.Background(), []config.Task{
+		{"defaults": map[string]any{
+			"shell": map[string]any{
+				"stdin":  true,
+				"stdout": false,
+				"stderr": true,
+				"quiet":  true,
+			},
+		}},
+		{"shell": []any{
+			map[string]any{
+				"command":     "echo hi",
+				"description": "say hi",
+				"stdin":       false,
+				"stdout":      true,
+				"quiet":       false,
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !success {
+		t.Fatalf("dispatch failed: %s", out.String())
+	}
+	if len(runner.commands) != 1 {
+		t.Fatalf("commands = %#v, want one command", runner.commands)
+	}
+	if len(runner.options) != 1 {
+		t.Fatalf("options = %#v, want one command options", runner.options)
+	}
+	if runner.commands[0] != "echo hi" {
+		t.Fatalf("command = %q, want echo hi", runner.commands[0])
+	}
+	got := runner.options[0]
+	wantCWD, err := filepath.Abs(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.CWD != wantCWD {
+		t.Fatalf("CWD = %q, want %q", got.CWD, wantCWD)
+	}
+	if got.EnableStdin {
+		t.Fatal("EnableStdin = true, want false from command override")
+	}
+	if !got.EnableStdout {
+		t.Fatal("EnableStdout = false, want true from command override")
+	}
+	if !got.EnableStderr {
+		t.Fatal("EnableStderr = false, want true from defaults")
+	}
+	if got.Timeout != 3*time.Second {
+		t.Fatalf("Timeout = %s, want 3s", got.Timeout)
+	}
+	if !strings.Contains(out.String(), "say hi [echo hi]") {
+		t.Fatalf("missing shell action log: %s", out.String())
 	}
 }
 
@@ -756,6 +835,17 @@ func (fs readlinkFailFS) Readlink(path string) (string, error) {
 
 type recordingHandler struct {
 	directives *[]string
+}
+
+type recordingShellRunner struct {
+	commands []string
+	options  []sh.Options
+}
+
+func (r *recordingShellRunner) Run(ctx context.Context, command string, opts sh.Options) int {
+	r.commands = append(r.commands, command)
+	r.options = append(r.options, opts)
+	return 0
 }
 
 func (h recordingHandler) CanHandle(directive string) bool {
