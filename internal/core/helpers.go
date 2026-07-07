@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strconv"
 )
 
@@ -47,6 +48,15 @@ func asString(v any) (string, bool) {
 	}
 }
 
+func sortedKeys(m map[string]any) []string {
+	keys := make([]string, 0, len(m))
+	for key := range m {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
 func boolValue(m map[string]any, key string, fallback bool) bool {
 	if v, ok := m[key]; ok {
 		if b, ok := v.(bool); ok {
@@ -79,6 +89,19 @@ func stringSlice(v any) []string {
 	return out
 }
 
+func isStringList(v any) bool {
+	list, ok := asList(v)
+	if !ok {
+		return false
+	}
+	for _, item := range list {
+		if _, ok := asString(item); !ok {
+			return false
+		}
+	}
+	return true
+}
+
 func defaultTarget(linkName string, target any) string {
 	if target == nil {
 		base := filepath.Base(linkName)
@@ -93,12 +116,19 @@ func defaultTarget(linkName string, target any) string {
 	return ""
 }
 
-func parseMode(v any, fallback os.FileMode) os.FileMode {
+func parseMode(v any, fallback os.FileMode) (os.FileMode, error) {
+	if v == nil {
+		return fallback, nil
+	}
 	if s, ok := asString(v); ok {
 		i, err := strconv.ParseUint(s, 8, 32)
 		if err == nil {
-			return os.FileMode(i)
+			return os.FileMode(i), nil
 		}
+		return 0, fmt.Errorf("mode %q must be an octal string", s)
 	}
-	return fileMode(v, fallback)
+	if mode, ok := fileMode(v); ok {
+		return mode, nil
+	}
+	return 0, fmt.Errorf("mode must be an octal string or number")
 }

@@ -52,8 +52,7 @@ The Python implementation usually logs per-item failures and returns aggregate s
 - Multiple config files are concatenated in CLI order.
 - Base directory defaults to the first config file's directory.
 - Built-ins supported: `defaults`, `link`, `create`, `shell`, `clean`.
-- `plugins`, `--plugin`, and `--plugin-dir` are accepted but Go cannot execute Python plugins. A requested plugin path is reported as unsupported and marks the run failed.
-- Built-in plugin disabling is supported, which can cause built-in directives to be unhandled.
+- Python plugin loading is not supported. `plugins`, `--plugin`, `--plugin-dir`, and built-in plugin disabling are intentionally omitted.
 - Shell commands run through `$SHELL -c` on Unix and `cmd /C` on Windows, matching the Python intent.
 - Shell commands use a default timeout to avoid unbounded process hangs. The timeout is a Go safety improvement and is documented in `README.md`.
 

@@ -29,6 +29,34 @@ func baseDir(ctx *Context, canonical bool) string {
 	return ctx.BaseDirectory
 }
 
+type linkResolution struct {
+	target         string
+	linkName       string
+	linkPath       string
+	absoluteTarget string
+	targetPath     string
+}
+
+func resolveLink(ctx *Context, target, linkName string, opts linkOptions) linkResolution {
+	linkPath := expand.Abs(linkName)
+	absoluteTarget := filepath.Join(baseDir(ctx, opts.Canonicalize), target)
+	targetPath := absoluteTarget
+	if opts.Relative {
+		targetPath = relativePath(absoluteTarget, linkPath)
+	}
+	return linkResolution{
+		target:         target,
+		linkName:       linkName,
+		linkPath:       linkPath,
+		absoluteTarget: absoluteTarget,
+		targetPath:     targetPath,
+	}
+}
+
+func (l linkResolution) cleanLinkName() string {
+	return filepath.Clean(l.linkName)
+}
+
 func relativePath(target, linkName string) string {
 	linkDir := filepath.Dir(linkName)
 	rel, err := filepath.Rel(linkDir, target)

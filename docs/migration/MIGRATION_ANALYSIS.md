@@ -92,4 +92,4 @@ Dotbot intentionally performs side effects:
 - Cleans broken symlinks.
 - Changes working directory to the base directory before dispatch.
 
-The Go migration preserves built-in directive behavior. Python plugin loading is not portable to Go and is documented as unsupported in `ARCHITECTURE.md`.
+The Go migration preserves supported built-in directive behavior. Python plugin loading is intentionally omitted from the Go port.

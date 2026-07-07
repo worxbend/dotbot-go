@@ -25,5 +25,3 @@ GitHub Actions mirrors this check on pushes and pull requests, then builds Linux
 ## Remaining Gaps
 
 - Golden CLI output parity could be expanded against Python Dotbot fixture output.
-- Windows-specific symlink behavior needs a Windows runner.
-- Dynamic Python plugin behavior is intentionally unsupported and documented.

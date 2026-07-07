@@ -13,21 +13,31 @@ import (
 	"dotbot-go/internal/shell"
 )
 
+// Dispatcher plans and applies ordered configuration tasks.
 type Dispatcher struct {
 	ctx      *Context
 	handlers []Handler
 }
 
+// DispatcherConfig provides dependencies and options for a Dispatcher.
 type DispatcherConfig struct {
+	// BaseDirectory is the repository root used by filesystem and shell handlers.
 	BaseDirectory string
-	Options       Options
-	Logger        *log.Logger
-	Handlers      []Handler
-	FS            fsops.FS
-	Shell         shell.Runner
-	Clock         func() time.Time
+	// Options control filtering, dry-run behavior, and failure handling.
+	Options Options
+	// Logger receives user-facing output; a discard logger is used when nil.
+	Logger *log.Logger
+	// Handlers overrides the built-in directive handler list when provided.
+	Handlers []Handler
+	// FS performs filesystem operations; OSFS is used when nil.
+	FS fsops.FS
+	// Shell runs shell commands; OSRunner is used when nil.
+	Shell shell.Runner
+	// Clock supplies timestamps for backup names; time.Now is used when nil.
+	Clock func() time.Time
 }
 
+// NewDispatcher builds a Dispatcher and validates that BaseDirectory exists.
 func NewDispatcher(cfg DispatcherConfig) (*Dispatcher, error) {
 	abs, err := filepath.Abs(cfg.BaseDirectory)
 	if err != nil {
@@ -72,6 +82,7 @@ func defaultLogger(logger *log.Logger) *log.Logger {
 	return log.New(io.Discard)
 }
 
+// Dispatch applies tasks in order.
 func (d *Dispatcher) Dispatch(ctx context.Context, tasks []config.Task) (bool, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -82,7 +93,9 @@ func (d *Dispatcher) Dispatch(ctx context.Context, tasks []config.Task) (bool, e
 		if err := ctx.Err(); err != nil {
 			return false, err
 		}
-		for action, data := range task {
+		for _, taskAction := range task.Actions() {
+			action := taskAction.Directive
+			data := taskAction.Data
 			if d.shouldSkip(action) && action != "defaults" {
 				d.ctx.Log.Info(fmt.Sprintf("Skipping action %s", action))
 				continue
@@ -96,21 +109,12 @@ func (d *Dispatcher) Dispatch(ctx context.Context, tasks []config.Task) (bool, e
 				}
 				handled = true
 			}
-			if action == "plugins" {
-				d.ctx.Log.Warning("Go migration does not support Python plugin loading")
-				success = false
-				handled = true
-				if d.ctx.Options.ExitOnFailure {
-					d.ctx.Log.Error("Action plugins failed")
-					return false, nil
-				}
-			}
 			for _, handler := range d.handlers {
 				if !handler.CanHandle(action) {
 					continue
 				}
 				if d.ctx.Options.DryRun && !handler.SupportsDryRun() {
-					d.ctx.Log.Action(fmt.Sprintf("Skipping dry-run-unaware plugin %T", handler))
+					d.ctx.Log.Action(fmt.Sprintf("Skipping dry-run-unaware handler %T", handler))
 					handled = true
 					continue
 				}
@@ -140,6 +144,65 @@ func (d *Dispatcher) Dispatch(ctx context.Context, tasks []config.Task) (bool, e
 		}
 	}
 	return success, nil
+}
+
+// Validate checks tasks by building a plan without applying operations.
+func (d *Dispatcher) Validate(tasks []config.Task) error {
+	_, err := d.Plan(tasks)
+	return err
+}
+
+// Plan expands tasks into operations without applying filesystem or shell changes.
+func (d *Dispatcher) Plan(tasks []config.Task) (Plan, error) {
+	d.ctx.Defaults = map[string]any{}
+	plan := Plan{Operations: []Operation{}}
+	for _, task := range tasks {
+		for _, taskAction := range task.Actions() {
+			action := taskAction.Directive
+			data := taskAction.Data
+			if d.shouldSkip(action) && action != "defaults" {
+				continue
+			}
+			if action == "defaults" {
+				if defaults, ok := asMap(data); ok {
+					d.ctx.Defaults = defaults
+				} else {
+					d.ctx.Defaults = map[string]any{}
+				}
+				continue
+			}
+			handler := d.handlerFor(action)
+			if handler == nil {
+				return plan, fmt.Errorf("action %s not handled", action)
+			}
+			validator, ok := handler.(validatingHandler)
+			if ok {
+				if err := validator.Validate(d.ctx, action, data); err != nil {
+					return plan, fmt.Errorf("validating action %s: %w", action, err)
+				}
+			}
+			planner, ok := handler.(planningHandler)
+			if !ok {
+				plan.Operations = append(plan.Operations, Operation{Directive: action})
+				continue
+			}
+			operations, err := planner.Plan(d.ctx, action, data)
+			if err != nil {
+				return plan, fmt.Errorf("planning action %s: %w", action, err)
+			}
+			plan.Operations = append(plan.Operations, operations...)
+		}
+	}
+	return plan, nil
+}
+
+func (d *Dispatcher) handlerFor(action string) Handler {
+	for _, handler := range d.handlers {
+		if handler.CanHandle(action) {
+			return handler
+		}
+	}
+	return nil
 }
 
 func (d *Dispatcher) shouldSkip(action string) bool {

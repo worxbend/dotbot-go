@@ -32,7 +32,5 @@ No blocking findings.
 
 ## Residual Risk
 
-- Python plugin execution is unsupported by design.
 - Recursive glob behavior is a focused Go implementation rather than a byte-for-byte Python `glob.glob` clone.
-- Windows symlink behavior needs validation on a Windows host.
 - CLI golden-output parity can be expanded if strict compatibility is required.

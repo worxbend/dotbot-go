@@ -1,12 +1,16 @@
 # Troubleshooting Guide
 
-Start every debugging session with a dry run and verbose output:
+Start every debugging session by inspecting the plan, then run a verbose dry run:
+
+```bash
+dotbot-go plan -c install.conf.yaml
+```
 
 ```bash
 dotbot-go -c install.conf.yaml --dry-run -vv
 ```
 
-This shows what `dotbot-go` plans to do without changing your filesystem.
+These commands show what `dotbot-go` plans to do without changing your filesystem.
 
 ## `unsupported config file format`
 
@@ -19,8 +23,6 @@ Supported extensions:
 - `.json`
 - `.json5`
 - `.toml`
-- `.conf`
-- `.hocon`
 
 Fix:
 
@@ -39,7 +41,7 @@ For YAML, JSON, and JSON5, the top level should usually be a list:
     ~/.vimrc: vimrc
 ```
 
-For TOML and HOCON, put the list under `tasks`:
+For TOML, put the list under `tasks`:
 
 ```toml
 tasks = [

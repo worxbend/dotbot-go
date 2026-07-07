@@ -7,45 +7,64 @@ import (
 	"strings"
 )
 
+// Level controls the minimum message severity written by Logger.
 type Level int
 
 const (
+	// Debug includes low-level diagnostic messages.
 	Debug Level = iota
+	// Info includes informational messages that are hidden by default.
 	Info
+	// Action includes user-visible steps and is the default level.
 	Action
+	// Warning includes recoverable problems.
 	Warning
+	// Error includes failed operations.
 	Error
 )
 
+// Logger writes labeled progress messages to an output stream.
 type Logger struct {
 	out   io.Writer
 	level Level
 	color bool
 }
 
+// New creates a Logger that writes action-and-above messages to out.
 func New(out io.Writer) *Logger {
 	return &Logger{out: out, level: Action, color: supportsColor(out)}
 }
 
+// SetLevel changes the minimum level written by the logger.
 func (l *Logger) SetLevel(level Level) {
 	l.level = level
 }
 
+// UseColor enables or disables ANSI color output.
 func (l *Logger) UseColor(color bool) {
 	l.color = color
 }
 
-func (l *Logger) Debug(msg string)   { l.log(Debug, msg) }
-func (l *Logger) Info(msg string)    { l.log(Info, msg) }
-func (l *Logger) Action(msg string)  { l.log(Action, msg) }
+// Debug writes a diagnostic message.
+func (l *Logger) Debug(msg string) { l.log(Debug, msg) }
+
+// Info writes an informational message.
+func (l *Logger) Info(msg string) { l.log(Info, msg) }
+
+// Action writes a user-visible action message.
+func (l *Logger) Action(msg string) { l.log(Action, msg) }
+
+// Warning writes a recoverable problem message.
 func (l *Logger) Warning(msg string) { l.log(Warning, msg) }
-func (l *Logger) Error(msg string)   { l.log(Error, msg) }
+
+// Error writes a failed operation message.
+func (l *Logger) Error(msg string) { l.log(Error, msg) }
 
 func (l *Logger) log(level Level, msg string) {
 	if level < l.level {
 		return
 	}
-	fmt.Fprintf(
+	_, _ = fmt.Fprintf(
 		l.out,
 		"%s%s%s %s%s%s\n",
 		l.colorFor(level),

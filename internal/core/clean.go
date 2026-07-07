@@ -8,11 +8,62 @@ import (
 	"dotbot-go/internal/expand"
 )
 
+// CleanHandler implements the clean directive.
 type CleanHandler struct{}
 
+// CanHandle reports whether directive is clean.
 func (CleanHandler) CanHandle(directive string) bool { return directive == "clean" }
-func (CleanHandler) SupportsDryRun() bool            { return true }
 
+// SupportsDryRun reports that clean can preview broken-link removal.
+func (CleanHandler) SupportsDryRun() bool { return true }
+
+// Validate checks clean directive data without touching the filesystem.
+func (CleanHandler) Validate(ctx *Context, directive string, data any) error {
+	if m, ok := asMap(data); ok {
+		for _, target := range sortedKeys(m) {
+			options := m[target]
+			if options == nil {
+				continue
+			}
+			if _, ok := asMap(options); !ok {
+				return fmt.Errorf("clean directive options for %s must be a map", target)
+			}
+		}
+		return nil
+	}
+	items, ok := asList(data)
+	if !ok {
+		return fmt.Errorf("clean directive must be a list or map")
+	}
+	for _, item := range items {
+		if _, ok := asString(item); !ok {
+			return fmt.Errorf("clean directive item must be a string")
+		}
+	}
+	return nil
+}
+
+// Plan expands clean directive data into target operations.
+func (h CleanHandler) Plan(ctx *Context, directive string, data any) ([]Operation, error) {
+	if err := h.Validate(ctx, directive, data); err != nil {
+		return nil, err
+	}
+	operations := []Operation{}
+	if m, ok := asMap(data); ok {
+		for _, target := range sortedKeys(m) {
+			operations = append(operations, Operation{Directive: directive, Target: target})
+		}
+		return operations, nil
+	}
+	items, _ := asList(data)
+	for _, item := range items {
+		target, _ := asString(item)
+		operations = append(operations, Operation{Directive: directive, Target: target})
+	}
+	return operations, nil
+}
+
+// Handle removes broken links according to clean directive rules.
 func (CleanHandler) Handle(ctx *Context, directive string, data any) (bool, error) {
 	success := true
 	defaults, _ := asMap(ctx.Defaults["clean"])
@@ -23,7 +74,8 @@ func (CleanHandler) Handle(ctx *Context, directive string, data any) (bool, erro
 		recursive = boolValue(defaults, "recursive", recursive)
 	}
 	if m, ok := asMap(data); ok {
-		for target, options := range m {
+		for _, target := range sortedKeys(m) {
+			options := m[target]
 			localForce, localRecursive := force, recursive
 			if om, ok := asMap(options); ok {
 				localForce = boolValue(om, "force", localForce)
@@ -72,8 +124,8 @@ func cleanTarget(ctx *Context, target string, force, recursive bool) bool {
 				success = false
 				continue
 			}
-			pointsAt := filepath.Join(filepath.Dir(path), targetPath)
-			if inDirectory(path, ctx.BaseDirectory) || force {
+			pointsAt := linkTargetPath(path, targetPath)
+			if inDirectory(pointsAt, ctx.BaseDirectory) || force {
 				if ctx.Options.DryRun {
 					ctx.Log.Action(fmt.Sprintf("Would remove invalid link %s -> %s", path, pointsAt))
 				} else {
@@ -101,7 +153,14 @@ func inDirectory(path, directory string) bool {
 	if err != nil {
 		p = path
 	}
-	dir = filepath.Clean(dir) + string(filepath.Separator)
+	dir = filepath.Clean(dir)
 	p = filepath.Clean(p)
-	return strings.HasPrefix(p, dir)
+	return p == dir || strings.HasPrefix(p, dir+string(filepath.Separator))
+}
+
+func linkTargetPath(linkPath, targetPath string) string {
+	if filepath.IsAbs(targetPath) {
+		return filepath.Clean(targetPath)
+	}
+	return filepath.Clean(filepath.Join(filepath.Dir(linkPath), targetPath))
 }

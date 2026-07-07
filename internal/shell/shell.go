@@ -9,20 +9,30 @@ import (
 	"time"
 )
 
+// Options controls how a shell command is executed.
 type Options struct {
-	CWD          string
-	EnableStdin  bool
+	// CWD is the working directory for the command.
+	CWD string
+	// EnableStdin connects the command to os.Stdin.
+	EnableStdin bool
+	// EnableStdout connects the command to os.Stdout.
 	EnableStdout bool
+	// EnableStderr connects the command to os.Stderr.
 	EnableStderr bool
-	Timeout      time.Duration
+	// Timeout cancels the command after the duration when greater than zero.
+	Timeout time.Duration
 }
 
+// Runner executes shell command strings for the shell directive.
 type Runner interface {
+	// Run executes command and returns its process exit code.
 	Run(ctx context.Context, command string, opts Options) int
 }
 
+// OSRunner runs commands through the host platform shell.
 type OSRunner struct{}
 
+// Run executes command through the host platform shell.
 func (OSRunner) Run(ctx context.Context, command string, opts Options) int {
 	if opts.Timeout > 0 {
 		var cancel context.CancelFunc
@@ -42,7 +52,9 @@ func (OSRunner) Run(ctx context.Context, command string, opts Options) int {
 		devnullW = nil
 	}
 	if devnullW != nil {
-		defer devnullW.Close()
+		defer func() {
+			_ = devnullW.Close()
+		}()
 	}
 	if opts.EnableStdout {
 		cmd.Stdout = os.Stdout

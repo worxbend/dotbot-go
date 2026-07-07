@@ -1,6 +1,6 @@
 # Config Formats Guide
 
-`dotbot-go` supports YAML, JSON, JSON5, TOML, and HOCON.
+`dotbot-go` supports YAML, JSON, JSON5, and TOML.
 
 Most users should start with YAML because it is the closest to classic Dotbot examples.
 
@@ -12,7 +12,6 @@ Most users should start with YAML because it is the closest to classic Dotbot ex
 | JSON | `.json` |
 | JSON5 | `.json5` |
 | TOML | `.toml` |
-| HOCON | `.conf`, `.hocon` |
 
 ## Task Lists
 
@@ -105,30 +104,6 @@ Keep inline tables on one line. This is a TOML syntax rule, not a `dotbot-go` ru
 
 Full example: [examples/install.toml](../examples/install.toml)
 
-## HOCON
-
-HOCON is object-based. Put the ordered task list under `tasks`:
-
-```hocon
-tasks = [
-  {
-    defaults = {
-      link = {
-        create = true
-        relink = true
-      }
-    }
-  }
-  {
-    link = {
-      "~/.vimrc" = "vimrc"
-    }
-  }
-]
-```
-
-Full example: [examples/install.hocon](../examples/install.hocon)
-
 ## Choosing A Format
 
 Use YAML if you want the simplest path and compatibility with common Dotbot examples.
@@ -138,5 +113,3 @@ Use JSON if another tool generates the config.
 Use JSON5 if you want JSON with comments.
 
 Use TOML if your existing tooling prefers TOML.
-
-Use HOCON if your team already uses HOCON or `.conf` files.

@@ -16,27 +16,31 @@ import (
 )
 
 type options struct {
-	superQuiet            bool
-	quiet                 bool
-	verbose               int
-	baseDirectory         string
-	configFiles           []string
-	plugins               []string
-	pluginDirs            []string
-	disableBuiltInPlugins bool
-	only                  []string
-	skip                  []string
-	dryRun                bool
-	forceColor            bool
-	noColor               bool
-	exitOnFailure         bool
-	showVersion           bool
+	superQuiet    bool
+	quiet         bool
+	verbose       int
+	baseDirectory string
+	configFiles   []string
+	only          []string
+	skip          []string
+	dryRun        bool
+	forceColor    bool
+	noColor       bool
+	exitOnFailure bool
+	showVersion   bool
+	validate      bool
+	plan          bool
+	output        string
 }
 
+// Execute runs the command tree with a background context and returns a process
+// style exit code.
 func Execute(args []string, stdout, stderr io.Writer) int {
 	return ExecuteContext(context.Background(), args, stdout, stderr)
 }
 
+// ExecuteContext runs the command tree with the supplied context and returns a
+// process style exit code.
 func ExecuteContext(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	if stdout == nil {
 		stdout = io.Discard
@@ -53,7 +57,7 @@ func ExecuteContext(ctx context.Context, args []string, stdout, stderr io.Writer
 		if errors.Is(err, app.ErrExit) {
 			return 1
 		}
-		fmt.Fprintln(stderr, err)
+		_, _ = fmt.Fprintln(stderr, err)
 		return 1
 	}
 	return 0
@@ -63,33 +67,73 @@ func newRootCommand(ctx context.Context, opts *options, stdout io.Writer) *cobra
 	cmd := &cobra.Command{
 		Use:           "dotbot-go",
 		Short:         "A Go port of Dotbot for bootstrapping dotfiles",
+		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return app.Run(ctx, opts.appOptions(), stdout, app.Dependencies{})
 		},
 	}
+	registerCommonFlags(cmd, opts)
+	registerApplyFlags(cmd, opts)
+	cmd.AddCommand(newValidateCommand(ctx, opts, stdout))
+	cmd.AddCommand(newPlanCommand(ctx, opts, stdout))
+	cmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
+		_, _ = fmt.Fprint(cmd.OutOrStdout(), renderHelp(cmd, stdout))
+	})
+	return cmd
+}
+
+func newValidateCommand(ctx context.Context, opts *options, stdout io.Writer) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:           "validate",
+		Short:         "Validate configuration without applying changes",
+		Args:          cobra.NoArgs,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.validate = true
+			return app.Run(ctx, opts.appOptions(), stdout, app.Dependencies{})
+		},
+	}
+	registerCommonFlags(cmd, opts)
+	return cmd
+}
+
+func newPlanCommand(ctx context.Context, opts *options, stdout io.Writer) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:           "plan",
+		Short:         "Print planned operations without applying changes",
+		Args:          cobra.NoArgs,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.plan = true
+			return app.Run(ctx, opts.appOptions(), stdout, app.Dependencies{})
+		},
+	}
+	registerCommonFlags(cmd, opts)
+	cmd.Flags().StringVar(&opts.output, "output", "text", "output format: text or json")
+	return cmd
+}
+
+func registerCommonFlags(cmd *cobra.Command, opts *options) {
 	cmd.Flags().BoolVarP(&opts.superQuiet, "super-quiet", "Q", false, "deprecated quiet mode")
 	mustMarkHidden(cmd, "super-quiet")
 	cmd.Flags().BoolVarP(&opts.quiet, "quiet", "q", false, "suppress most output")
 	cmd.Flags().CountVarP(&opts.verbose, "verbose", "v", "enable verbose output\n-v: show informational messages\n-vv: also, set shell commands stderr/stdout to true")
 	cmd.Flags().StringVarP(&opts.baseDirectory, "base-directory", "d", "", "execute commands from within BASE_DIR")
 	cmd.Flags().StringArrayVarP(&opts.configFiles, "config-file", "c", nil, "run commands given in CONFIG_FILE")
-	cmd.Flags().StringArrayVarP(&opts.plugins, "plugin", "p", nil, "load PLUGIN as a plugin")
-	cmd.Flags().BoolVar(&opts.disableBuiltInPlugins, "disable-built-in-plugins", false, "disable built-in plugins")
-	cmd.Flags().StringArrayVar(&opts.pluginDirs, "plugin-dir", nil, "deprecated plugin directory")
-	mustMarkHidden(cmd, "plugin-dir")
 	cmd.Flags().StringSliceVar(&opts.only, "only", nil, "only run specified directives")
 	cmd.Flags().StringSliceVar(&opts.skip, "except", nil, "skip specified directives")
-	cmd.Flags().BoolVarP(&opts.dryRun, "dry-run", "n", false, "print what would be done, without doing it")
 	cmd.Flags().BoolVar(&opts.forceColor, "force-color", false, "force color output")
 	cmd.Flags().BoolVar(&opts.noColor, "no-color", false, "disable color output")
 	cmd.Flags().BoolVar(&opts.showVersion, "version", false, "show program's version number and exit")
+}
+
+func registerApplyFlags(cmd *cobra.Command, opts *options) {
+	cmd.Flags().BoolVarP(&opts.dryRun, "dry-run", "n", false, "print what would be done, without doing it")
 	cmd.Flags().BoolVarP(&opts.exitOnFailure, "exit-on-failure", "x", false, "exit after first failed directive")
-	cmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
-		fmt.Fprint(cmd.OutOrStdout(), renderHelp(cmd, stdout))
-	})
-	return cmd
 }
 
 func mustMarkHidden(cmd *cobra.Command, name string) {
@@ -98,6 +142,7 @@ func mustMarkHidden(cmd *cobra.Command, name string) {
 	}
 }
 
+// ExecuteOS runs dotbot-go using os.Args and the process standard streams.
 func ExecuteOS() int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -106,21 +151,21 @@ func ExecuteOS() int {
 
 func (o *options) appOptions() app.Options {
 	return app.Options{
-		SuperQuiet:            o.superQuiet,
-		Quiet:                 o.quiet,
-		Verbose:               o.verbose,
-		BaseDirectory:         o.baseDirectory,
-		ConfigFiles:           o.configFiles,
-		Plugins:               o.plugins,
-		PluginDirs:            o.pluginDirs,
-		DisableBuiltInPlugins: o.disableBuiltInPlugins,
-		Only:                  o.only,
-		Skip:                  o.skip,
-		DryRun:                o.dryRun,
-		ForceColor:            o.forceColor,
-		NoColor:               o.noColor,
-		ExitOnFailure:         o.exitOnFailure,
-		ShowVersion:           o.showVersion,
+		SuperQuiet:    o.superQuiet,
+		Quiet:         o.quiet,
+		Verbose:       o.verbose,
+		BaseDirectory: o.baseDirectory,
+		ConfigFiles:   o.configFiles,
+		Only:          o.only,
+		Skip:          o.skip,
+		DryRun:        o.dryRun,
+		ForceColor:    o.forceColor,
+		NoColor:       o.noColor,
+		ExitOnFailure: o.exitOnFailure,
+		ShowVersion:   o.showVersion,
+		Validate:      o.validate,
+		Plan:          o.plan,
+		Output:        o.output,
 	}
 }
 
@@ -129,37 +174,85 @@ func renderHelp(cmd *cobra.Command, stdout io.Writer) string {
 	var b strings.Builder
 
 	helpTitle(&b, color, cmd)
+	writeHelpUsage(&b, color, cmd)
+	writeHelpExamples(&b, color, cmd)
+	writeHelpCommands(&b, color, cmd)
+	writeHelpDirectives(&b, color)
+	writeHelpFlags(&b, color, cmd)
+	writeHelpColorNote(&b, color)
+	return b.String()
+}
 
-	helpSection(&b, color, "Usage")
-	fmt.Fprintf(&b, "  %s\n\n", cmd.UseLine())
+func writeHelpUsage(b *strings.Builder, color bool, cmd *cobra.Command) {
+	helpSection(b, color, "Usage")
+	fmt.Fprintf(b, "  %s\n\n", cmd.UseLine())
+}
 
-	helpSection(&b, color, "Examples")
-	fmt.Fprintln(&b, "  dotbot-go -c install.conf.yaml")
-	fmt.Fprintln(&b, "  dotbot-go -d ~/.dotfiles -c ~/.dotfiles/install.conf.yaml --dry-run")
-	fmt.Fprintln(&b, "  dotbot-go -c install.conf.yaml --only link -vv")
-	fmt.Fprintln(&b)
+func writeHelpExamples(b *strings.Builder, color bool, cmd *cobra.Command) {
+	helpSection(b, color, "Examples")
+	for _, example := range helpExamples(cmd) {
+		fmt.Fprintf(b, "  %s\n", example)
+	}
+	fmt.Fprintln(b)
+}
 
-	helpSection(&b, color, "Built-In Directives")
-	fmt.Fprintln(&b, "  defaults   set directive defaults")
-	fmt.Fprintln(&b, "  link       create symlinks or hardlinks")
-	fmt.Fprintln(&b, "  create     create directories")
-	fmt.Fprintln(&b, "  shell      run setup commands")
-	fmt.Fprintln(&b, "  clean      remove broken links")
-	fmt.Fprintln(&b)
+func helpExamples(cmd *cobra.Command) []string {
+	if len(cmd.Commands()) > 0 {
+		return []string{
+			"dotbot-go -c install.conf.yaml",
+			"dotbot-go validate -c install.conf.yaml",
+			"dotbot-go plan -c install.conf.yaml --output json",
+			"dotbot-go -d ~/.dotfiles -c ~/.dotfiles/install.conf.yaml --dry-run",
+			"dotbot-go -c install.conf.yaml --only link -vv",
+		}
+	}
+	if cmd.Name() == "plan" {
+		return []string{
+			"dotbot-go plan -c install.conf.yaml",
+			"dotbot-go plan -d ~/.dotfiles -c ~/.dotfiles/install.conf.yaml",
+			"dotbot-go plan -c install.conf.yaml --output json",
+		}
+	}
+	return []string{
+		"dotbot-go validate -c install.conf.yaml",
+		"dotbot-go validate -d ~/.dotfiles -c ~/.dotfiles/install.conf.yaml",
+		"dotbot-go validate -c install.conf.yaml --only link",
+	}
+}
 
-	helpSection(&b, color, "Flags")
-	helpFlagGroup(&b, color, cmd, "Workflow", []string{
+func writeHelpCommands(b *strings.Builder, color bool, cmd *cobra.Command) {
+	if len(cmd.Commands()) > 0 {
+		helpSection(b, color, "Commands")
+		fmt.Fprintln(b, "  validate   validate configuration without applying changes")
+		fmt.Fprintln(b, "  plan       print planned operations without applying changes")
+		fmt.Fprintln(b)
+	}
+}
+
+func writeHelpDirectives(b *strings.Builder, color bool) {
+	helpSection(b, color, "Built-In Directives")
+	fmt.Fprintln(b, "  defaults   set directive defaults")
+	fmt.Fprintln(b, "  link       create symlinks or hardlinks")
+	fmt.Fprintln(b, "  create     create directories")
+	fmt.Fprintln(b, "  shell      run setup commands")
+	fmt.Fprintln(b, "  clean      remove broken links")
+	fmt.Fprintln(b)
+}
+
+func writeHelpFlags(b *strings.Builder, color bool, cmd *cobra.Command) {
+	helpSection(b, color, "Flags")
+	helpFlagGroup(b, color, cmd, "Workflow", []string{
 		"config-file",
 		"base-directory",
 		"dry-run",
 		"exit-on-failure",
 	})
-	helpFlagGroup(&b, color, cmd, "Filtering", []string{
+	helpFlagGroup(b, color, cmd, "Filtering", []string{
 		"only",
 		"except",
-		"disable-built-in-plugins",
 	})
-	helpFlagGroup(&b, color, cmd, "Output", []string{
+	helpFlagGroup(b, color, cmd, "Output", []string{
+		"output",
 		"quiet",
 		"verbose",
 		"force-color",
@@ -167,14 +260,12 @@ func renderHelp(cmd *cobra.Command, stdout io.Writer) string {
 		"version",
 		"help",
 	})
-	helpFlagGroup(&b, color, cmd, "Compatibility", []string{
-		"plugin",
-	})
+}
 
-	helpSection(&b, color, "Color")
-	fmt.Fprintln(&b, "  Colors are automatic for terminals.")
-	fmt.Fprintln(&b, "  Use --force-color for redirected color, or --no-color for plain output.")
-	return b.String()
+func writeHelpColorNote(b *strings.Builder, color bool) {
+	helpSection(b, color, "Color")
+	fmt.Fprintln(b, "  Colors are automatic for terminals.")
+	fmt.Fprintln(b, "  Use --force-color for redirected color, or --no-color for plain output.")
 }
 
 func helpTitle(b *strings.Builder, color bool, cmd *cobra.Command) {
@@ -259,8 +350,8 @@ func flagDisplayName(name string) string {
 		return "--except <directive>"
 	case "only":
 		return "--only <directive>"
-	case "plugin":
-		return "--plugin <path>"
+	case "output":
+		return "--output <format>"
 	default:
 		return "--" + name
 	}

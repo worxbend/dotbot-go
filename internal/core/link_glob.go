@@ -11,11 +11,18 @@ func hasGlobChars(path string) bool {
 	return strings.ContainsAny(path, "?*[")
 }
 
-func createGlobResults(ctx *Context, pattern string, exclude []string) []string {
-	include := glob(ctx, pattern)
+func createGlobResults(pattern string, exclude []string) ([]string, error) {
+	include, err := glob(pattern)
+	if err != nil {
+		return nil, err
+	}
 	excluded := map[string]bool{}
 	for _, ex := range exclude {
-		for _, item := range glob(ctx, ex) {
+		items, err := glob(ex)
+		if err != nil {
+			return nil, err
+		}
+		for _, item := range items {
 			excluded[item] = true
 		}
 	}
@@ -26,10 +33,10 @@ func createGlobResults(ctx *Context, pattern string, exclude []string) []string 
 		}
 	}
 	sort.Strings(out)
-	return out
+	return out, nil
 }
 
-func glob(ctx *Context, pattern string) []string {
+func glob(pattern string) ([]string, error) {
 	matches := []string{}
 	if strings.Contains(pattern, "**") {
 		root := pattern[:strings.Index(pattern, "**")]
@@ -39,9 +46,12 @@ func glob(ctx *Context, pattern string) []string {
 		}
 		if err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 			if err != nil {
-				return nil
+				return err
 			}
-			ok, _ := doublestarMatch(pattern, path)
+			ok, err := doublestarMatch(pattern, path)
+			if err != nil {
+				return err
+			}
 			if ok {
 				if !strings.HasSuffix(pattern, string(filepath.Separator)) && d.IsDir() {
 					return nil
@@ -50,19 +60,18 @@ func glob(ctx *Context, pattern string) []string {
 			}
 			return nil
 		}); err != nil {
-			ctx.Log.Debug(err.Error())
+			return nil, err
 		}
-		return matches
+		return matches, nil
 	}
 	found, err := filepath.Glob(pattern)
 	if err != nil {
-		ctx.Log.Debug(err.Error())
-		return nil
+		return nil, err
 	}
 	for _, item := range found {
 		matches = append(matches, filepath.Clean(item))
 	}
-	return matches
+	return matches, nil
 }
 
 func doublestarMatch(pattern, path string) (bool, error) {

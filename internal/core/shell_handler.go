@@ -6,11 +6,48 @@ import (
 	sh "dotbot-go/internal/shell"
 )
 
+// ShellHandler implements the shell directive.
 type ShellHandler struct{}
 
+// CanHandle reports whether directive is shell.
 func (ShellHandler) CanHandle(directive string) bool { return directive == "shell" }
-func (ShellHandler) SupportsDryRun() bool            { return true }
 
+// SupportsDryRun reports that shell can preview commands without running them.
+func (ShellHandler) SupportsDryRun() bool { return true }
+
+// Validate checks shell directive data without running commands.
+func (ShellHandler) Validate(ctx *Context, directive string, data any) error {
+	items, ok := asList(data)
+	if !ok {
+		return fmt.Errorf("shell directive must be a list")
+	}
+	for _, item := range items {
+		if _, _, ok := shellCommandSpec(item); !ok {
+			return fmt.Errorf("shell directive item must include a command")
+		}
+	}
+	return nil
+}
+
+// Plan expands shell directive data into command operations.
+func (h ShellHandler) Plan(ctx *Context, directive string, data any) ([]Operation, error) {
+	if err := h.Validate(ctx, directive, data); err != nil {
+		return nil, err
+	}
+	items, _ := asList(data)
+	operations := []Operation{}
+	for _, item := range items {
+		command, description, _ := shellCommandSpec(item)
+		operations = append(operations, Operation{
+			Directive: directive,
+			Target:    command,
+			Detail:    description,
+		})
+	}
+	return operations, nil
+}
+
+// Handle runs commands requested by the shell directive.
 func (ShellHandler) Handle(ctx *Context, directive string, data any) (bool, error) {
 	items, ok := asList(data)
 	if !ok {
@@ -19,60 +56,84 @@ func (ShellHandler) Handle(ctx *Context, directive string, data any) (bool, erro
 	success := true
 	defaults, _ := asMap(ctx.Defaults["shell"])
 	for _, item := range items {
-		stdin := false
-		stdout := false
-		stderr := false
-		quiet := false
-		if defaults != nil {
-			stdin = boolValue(defaults, "stdin", stdin)
-			stdout = boolValue(defaults, "stdout", stdout)
-			stderr = boolValue(defaults, "stderr", stderr)
-			quiet = boolValue(defaults, "quiet", quiet)
-		}
 		cmd, msg, itemOK := shellCommandSpec(item)
 		if !itemOK {
 			success = false
 			continue
 		}
-		if m, ok := asMap(item); ok {
-			stdin = boolValue(m, "stdin", stdin)
-			stdout = boolValue(m, "stdout", stdout)
-			stderr = boolValue(m, "stderr", stderr)
-			quiet = boolValue(m, "quiet", quiet)
-		}
-		prefix := ""
-		if ctx.Options.DryRun {
-			prefix = "Would run command "
-		}
-		if quiet {
-			if msg != "" {
-				ctx.Log.Info(prefix + msg)
-			}
-		} else if msg == "" {
-			ctx.Log.Action(prefix + cmd)
-		} else {
-			ctx.Log.Action(fmt.Sprintf("%s%s [%s]", prefix, msg, cmd))
-		}
+		opts := shellDirectiveOptionsFor(defaults, item)
+		logShellCommand(ctx, opts, cmd, msg)
 		if ctx.Options.DryRun {
 			continue
 		}
-		if ctx.Options.Verbose > 1 {
-			stdout = true
-			stderr = true
-		}
-		ret := ctx.Shell.Run(ctx.RunContext, cmd, sh.Options{
-			CWD:          ctx.BaseDirectory,
-			EnableStdin:  stdin,
-			EnableStdout: stdout,
-			EnableStderr: stderr,
-			Timeout:      defaultTimeout(ctx.Options.ShellTimeout),
-		})
+		ret := ctx.Shell.Run(ctx.RunContext, cmd, opts.runnerOptions(ctx))
 		if ret != 0 {
 			success = false
 			ctx.Log.Warning(fmt.Sprintf("Command [%s] failed", cmd))
 		}
 	}
 	return finish(ctx, success, "All commands have been executed", "Some commands were not successfully executed"), nil
+}
+
+type shellDirectiveOptions struct {
+	stdin  bool
+	stdout bool
+	stderr bool
+	quiet  bool
+}
+
+func shellDirectiveOptionsFor(defaults map[string]any, item any) shellDirectiveOptions {
+	opts := shellDirectiveOptions{}.withMap(defaults)
+	if values, ok := asMap(item); ok {
+		opts = opts.withMap(values)
+	}
+	return opts
+}
+
+func (opts shellDirectiveOptions) withMap(values map[string]any) shellDirectiveOptions {
+	if values == nil {
+		return opts
+	}
+	return shellDirectiveOptions{
+		stdin:  boolValue(values, "stdin", opts.stdin),
+		stdout: boolValue(values, "stdout", opts.stdout),
+		stderr: boolValue(values, "stderr", opts.stderr),
+		quiet:  boolValue(values, "quiet", opts.quiet),
+	}
+}
+
+func (opts shellDirectiveOptions) runnerOptions(ctx *Context) sh.Options {
+	stdout := opts.stdout
+	stderr := opts.stderr
+	if ctx.Options.Verbose > 1 {
+		stdout = true
+		stderr = true
+	}
+	return sh.Options{
+		CWD:          ctx.BaseDirectory,
+		EnableStdin:  opts.stdin,
+		EnableStdout: stdout,
+		EnableStderr: stderr,
+		Timeout:      defaultTimeout(ctx.Options.ShellTimeout),
+	}
+}
+
+func logShellCommand(ctx *Context, opts shellDirectiveOptions, command, description string) {
+	prefix := ""
+	if ctx.Options.DryRun {
+		prefix = "Would run command "
+	}
+	if opts.quiet {
+		if description != "" {
+			ctx.Log.Info(prefix + description)
+		}
+		return
+	}
+	if description == "" {
+		ctx.Log.Action(prefix + command)
+		return
+	}
+	ctx.Log.Action(fmt.Sprintf("%s%s [%s]", prefix, description, command))
 }
 
 func shellCommandSpec(item any) (string, string, bool) {

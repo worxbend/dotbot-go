@@ -17,5 +17,5 @@
 
 ## Documented Drift
 
-- Dynamic Python plugins are unsupported.
+- Dynamic Python plugins are omitted from the Go port.
 - Recursive glob support is implemented locally for common `**` Dotbot patterns; it is intentionally minimal compared with Python's `glob.glob`.

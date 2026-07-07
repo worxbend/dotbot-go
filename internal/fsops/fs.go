@@ -5,8 +5,13 @@ import (
 	"path/filepath"
 )
 
+// FileInfo is the filesystem metadata type returned by FS.
 type FileInfo = os.FileInfo
 
+// FS is the filesystem surface used by directive handlers.
+//
+// Implementations should match the behavior of the corresponding os and filepath
+// operations closely enough that handlers can be tested against fakes.
 type FS interface {
 	Abs(string) (string, error)
 	Chmod(string, os.FileMode) error
@@ -27,6 +32,7 @@ type FS interface {
 	Link(string, string) error
 }
 
+// OSFS implements FS with the local operating system filesystem.
 type OSFS struct{}
 
 func (OSFS) Abs(path string) (string, error)           { return filepath.Abs(path) }
