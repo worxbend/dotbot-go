@@ -83,17 +83,17 @@ func defaultTimeout(d time.Duration) time.Duration {
 	return 10 * time.Minute
 }
 
-func fileMode(v any, fallback os.FileMode) os.FileMode {
+func fileMode(v any) (os.FileMode, bool) {
 	switch t := v.(type) {
 	case int:
-		return os.FileMode(t)
+		return os.FileMode(t), true
 	case int64:
-		return os.FileMode(t)
+		return os.FileMode(t), true
 	case uint64:
-		return os.FileMode(t)
+		return os.FileMode(t), true
 	case float64:
-		return os.FileMode(t)
+		return os.FileMode(t), true
 	default:
-		return fallback
+		return 0, false
 	}
 }

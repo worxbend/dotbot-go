@@ -403,6 +403,45 @@ func TestValidateRejectsMalformedCreateDirective(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsInvalidCreateMode(t *testing.T) {
+	cases := []struct {
+		name  string
+		tasks []config.Task
+	}{
+		{
+			name: "default mode",
+			tasks: []config.Task{
+				{"defaults": map[string]any{
+					"create": map[string]any{"mode": "invalid"},
+				}},
+				{"create": []any{"tmp"}},
+			},
+		},
+		{
+			name: "entry mode",
+			tasks: []config.Task{
+				{"create": map[string]any{
+					"tmp": map[string]any{"mode": "invalid"},
+				}},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			var out bytes.Buffer
+			dispatcher := newTestDispatcher(t, dir, &out, Options{})
+			err := dispatcher.Validate(tc.tasks)
+			if err == nil {
+				t.Fatal("expected validation error")
+			}
+			if !strings.Contains(err.Error(), "mode") {
+				t.Fatalf("err = %v", err)
+			}
+		})
+	}
+}
+
 func TestValidateRejectsInvalidLinkType(t *testing.T) {
 	dir := t.TempDir()
 	var out bytes.Buffer

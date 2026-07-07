@@ -18,8 +18,17 @@ func (CreateHandler) SupportsDryRun() bool { return true }
 
 // Validate checks create directive data without touching the filesystem.
 func (CreateHandler) Validate(ctx *Context, directive string, data any) error {
-	_, err := createEntries(data)
-	return err
+	entries, err := createEntries(data)
+	if err != nil {
+		return err
+	}
+	defaults, _ := asMap(ctx.Defaults["create"])
+	for _, entry := range entries {
+		if _, err := createMode(defaults, entry.options); err != nil {
+			return fmt.Errorf("create directive mode for %s: %w", entry.path, err)
+		}
+	}
+	return nil
 }
 
 // Plan expands create directive data into directory operations.
@@ -44,7 +53,11 @@ func (CreateHandler) Handle(ctx *Context, directive string, data any) (bool, err
 	success := true
 	defaults, _ := asMap(ctx.Defaults["create"])
 	for _, entry := range entries {
-		success = createPath(ctx, entry.path, createMode(defaults, entry.options)) && success
+		mode, err := createMode(defaults, entry.options)
+		if err != nil {
+			return false, fmt.Errorf("create directive mode for %s: %w", entry.path, err)
+		}
+		success = createPath(ctx, entry.path, mode) && success
 	}
 	return finish(ctx, success, "All paths have been set up", "Some paths were not successfully set up"), nil
 }
@@ -85,15 +98,23 @@ func createEntries(data any) ([]createEntry, error) {
 	return nil, fmt.Errorf("create directive must be a list or map")
 }
 
-func createMode(defaults, options map[string]any) os.FileMode {
+func createMode(defaults, options map[string]any) (os.FileMode, error) {
 	mode := os.FileMode(0o777)
 	if defaults != nil {
-		mode = parseMode(defaults["mode"], mode)
+		var err error
+		mode, err = parseMode(defaults["mode"], mode)
+		if err != nil {
+			return 0, fmt.Errorf("default mode: %w", err)
+		}
 	}
 	if options != nil {
-		mode = parseMode(options["mode"], mode)
+		var err error
+		mode, err = parseMode(options["mode"], mode)
+		if err != nil {
+			return 0, err
+		}
 	}
-	return mode
+	return mode, nil
 }
 
 func createPath(ctx *Context, path string, mode os.FileMode) bool {

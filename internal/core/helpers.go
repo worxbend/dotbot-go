@@ -116,12 +116,19 @@ func defaultTarget(linkName string, target any) string {
 	return ""
 }
 
-func parseMode(v any, fallback os.FileMode) os.FileMode {
+func parseMode(v any, fallback os.FileMode) (os.FileMode, error) {
+	if v == nil {
+		return fallback, nil
+	}
 	if s, ok := asString(v); ok {
 		i, err := strconv.ParseUint(s, 8, 32)
 		if err == nil {
-			return os.FileMode(i)
+			return os.FileMode(i), nil
 		}
+		return 0, fmt.Errorf("mode %q must be an octal string", s)
 	}
-	return fileMode(v, fallback)
+	if mode, ok := fileMode(v); ok {
+		return mode, nil
+	}
+	return 0, fmt.Errorf("mode must be an octal string or number")
 }
