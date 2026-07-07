@@ -172,7 +172,7 @@ func TestRunPlanTextPrintsOperationsWithoutChangingDirectory(t *testing.T) {
 	got := stdout.String()
 	for _, expected := range []string{
 		"Plan: 3 operation(s), 3 task(s), 1 config file(s), base " + dir,
-		"create  ~/.config",
+		"create  ~/.config (0777)",
 		"link    " + filepath.Join(dir, ".vimrc") + " -> vimrc",
 		"shell   echo hi [say hi]",
 	} {
@@ -220,7 +220,7 @@ func TestRunPlanJSONPrintsStructuredOperations(t *testing.T) {
 	if len(got.Operations) != 1 {
 		t.Fatalf("operation count = %d, want 1", len(got.Operations))
 	}
-	if got.Operations[0].Directive != "create" || got.Operations[0].Target != "~/.config" || got.Operations[0].Detail != "" {
+	if got.Operations[0].Directive != "create" || got.Operations[0].Target != "~/.config" || got.Operations[0].Detail != "0777" {
 		t.Fatalf("operation = %#v", got.Operations[0])
 	}
 }

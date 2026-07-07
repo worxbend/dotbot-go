@@ -37,9 +37,18 @@ func (h CreateHandler) Plan(ctx *Context, directive string, data any) ([]Operati
 	if err != nil {
 		return nil, err
 	}
+	defaults, _ := asMap(ctx.Defaults["create"])
 	operations := make([]Operation, 0, len(entries))
 	for _, entry := range entries {
-		operations = append(operations, Operation{Directive: directive, Target: entry.path})
+		mode, err := createMode(defaults, entry.options)
+		if err != nil {
+			return nil, fmt.Errorf("create directive mode for %s: %w", entry.path, err)
+		}
+		operations = append(operations, Operation{
+			Directive: directive,
+			Target:    entry.path,
+			Detail:    createModeDetail(mode),
+		})
 	}
 	return operations, nil
 }
@@ -115,6 +124,10 @@ func createMode(defaults, options map[string]any) (os.FileMode, error) {
 		}
 	}
 	return mode, nil
+}
+
+func createModeDetail(mode os.FileMode) string {
+	return fmt.Sprintf("%#o", mode.Perm())
 }
 
 func createPath(ctx *Context, path string, mode os.FileMode) bool {

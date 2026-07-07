@@ -246,7 +246,7 @@ func TestExecutePlanPrintsOperationsWithoutApplyingConfig(t *testing.T) {
 	if !strings.Contains(stdout.String(), "Plan: 1 operation(s)") {
 		t.Fatalf("stdout = %q", stdout.String())
 	}
-	if !strings.Contains(stdout.String(), "create  "+createdPath) {
+	if !strings.Contains(stdout.String(), "create  "+createdPath+" (0777)") {
 		t.Fatalf("stdout = %q", stdout.String())
 	}
 	if stderr.Len() != 0 {

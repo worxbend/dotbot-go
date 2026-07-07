@@ -518,7 +518,7 @@ func TestPlanBuildsOperationList(t *testing.T) {
 	if len(plan.Operations) != 7 {
 		t.Fatalf("len(plan.Operations) = %d, want 7: %#v", len(plan.Operations), plan.Operations)
 	}
-	if !hasOperation(plan, Operation{Directive: "create", Target: "~/.config"}) {
+	if !hasOperation(plan, Operation{Directive: "create", Target: "~/.config", Detail: "0777"}) {
 		t.Fatalf("missing create operation: %#v", plan.Operations)
 	}
 	if !hasOperation(plan, Operation{Directive: "link", Target: filepath.Join(dir, ".vimrc"), Detail: "vimrc"}) {
@@ -548,6 +548,36 @@ func TestPlanHonorsOnlyFilter(t *testing.T) {
 	}
 }
 
+func TestPlanIncludesCreateModeDetails(t *testing.T) {
+	dir := t.TempDir()
+	var out bytes.Buffer
+	dispatcher := newTestDispatcher(t, dir, &out, Options{})
+	plan, err := dispatcher.Plan([]config.Task{
+		{"defaults": map[string]any{
+			"create": map[string]any{"mode": "0755"},
+		}},
+		{"create": map[string]any{
+			"default-mode": nil,
+			"entry-mode":   map[string]any{"mode": "0700"},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := []Operation{
+		{Directive: "create", Target: "default-mode", Detail: "0755"},
+		{Directive: "create", Target: "entry-mode", Detail: "0700"},
+	}
+	if len(plan.Operations) != len(expected) {
+		t.Fatalf("len(plan.Operations) = %d, want %d: %#v", len(plan.Operations), len(expected), plan.Operations)
+	}
+	for i, operation := range expected {
+		if plan.Operations[i] != operation {
+			t.Fatalf("operation[%d] = %#v, want %#v", i, plan.Operations[i], operation)
+		}
+	}
+}
+
 func TestPlanSortsMapTargets(t *testing.T) {
 	dir := t.TempDir()
 	var out bytes.Buffer
@@ -570,8 +600,8 @@ func TestPlanSortsMapTargets(t *testing.T) {
 		t.Fatal(err)
 	}
 	expected := []Operation{
-		{Directive: "create", Target: "a-dir"},
-		{Directive: "create", Target: "z-dir"},
+		{Directive: "create", Target: "a-dir", Detail: "0777"},
+		{Directive: "create", Target: "z-dir", Detail: "0777"},
 		{Directive: "clean", Target: "a-clean"},
 		{Directive: "clean", Target: "z-clean"},
 		{Directive: "link", Target: "a-link", Detail: "a-target"},
