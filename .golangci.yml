@@ -1,12 +1,13 @@
+version: "2"
+
 run:
   timeout: 5m
   tests: true
 
 linters:
+  default: none
   enable:
     - errcheck
-    - gofmt
-    - gosimple
     - govet
     - ineffassign
     - misspell
@@ -15,12 +16,16 @@ linters:
     - staticcheck
     - unused
 
-linters-settings:
-  errcheck:
-    check-type-assertions: true
-  nolintlint:
-    require-explanation: true
-    require-specific: true
+  settings:
+    errcheck:
+      check-type-assertions: true
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+
+formatters:
+  enable:
+    - gofmt
 
 issues:
   max-issues-per-linter: 0

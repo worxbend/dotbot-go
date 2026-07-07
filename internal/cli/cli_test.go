@@ -284,7 +284,7 @@ func TestExecutePlanPreservesYAMLDirectiveOrder(t *testing.T) {
 	if shellIndex < 0 || createIndex < 0 || cleanIndex < 0 {
 		t.Fatalf("missing expected operations:\n%s", got)
 	}
-	if !(shellIndex < createIndex && createIndex < cleanIndex) {
+	if shellIndex >= createIndex || createIndex >= cleanIndex {
 		t.Fatalf("operations are not in source order:\n%s", got)
 	}
 	if stderr.Len() != 0 {
@@ -318,7 +318,7 @@ func TestExecutePlanPreservesJSONDirectiveOrder(t *testing.T) {
 	if shellIndex < 0 || createIndex < 0 || cleanIndex < 0 {
 		t.Fatalf("missing expected operations:\n%s", got)
 	}
-	if !(shellIndex < createIndex && createIndex < cleanIndex) {
+	if shellIndex >= createIndex || createIndex >= cleanIndex {
 		t.Fatalf("operations are not in source order:\n%s", got)
 	}
 	if stderr.Len() != 0 {
@@ -353,7 +353,7 @@ func TestExecutePlanPreservesJSON5DirectiveOrder(t *testing.T) {
 	if shellIndex < 0 || createIndex < 0 || cleanIndex < 0 {
 		t.Fatalf("missing expected operations:\n%s", got)
 	}
-	if !(shellIndex < createIndex && createIndex < cleanIndex) {
+	if shellIndex >= createIndex || createIndex >= cleanIndex {
 		t.Fatalf("operations are not in source order:\n%s", got)
 	}
 	if stderr.Len() != 0 {
@@ -385,7 +385,7 @@ tasks = [
 	if shellIndex < 0 || createIndex < 0 || cleanIndex < 0 {
 		t.Fatalf("missing expected operations:\n%s", got)
 	}
-	if !(shellIndex < createIndex && createIndex < cleanIndex) {
+	if shellIndex >= createIndex || createIndex >= cleanIndex {
 		t.Fatalf("operations are not in source order:\n%s", got)
 	}
 	if stderr.Len() != 0 {

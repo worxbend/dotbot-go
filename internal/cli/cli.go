@@ -57,7 +57,7 @@ func ExecuteContext(ctx context.Context, args []string, stdout, stderr io.Writer
 		if errors.Is(err, app.ErrExit) {
 			return 1
 		}
-		fmt.Fprintln(stderr, err)
+		_, _ = fmt.Fprintln(stderr, err)
 		return 1
 	}
 	return 0
@@ -79,7 +79,7 @@ func newRootCommand(ctx context.Context, opts *options, stdout io.Writer) *cobra
 	cmd.AddCommand(newValidateCommand(ctx, opts, stdout))
 	cmd.AddCommand(newPlanCommand(ctx, opts, stdout))
 	cmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
-		fmt.Fprint(cmd.OutOrStdout(), renderHelp(cmd, stdout))
+		_, _ = fmt.Fprint(cmd.OutOrStdout(), renderHelp(cmd, stdout))
 	})
 	return cmd
 }

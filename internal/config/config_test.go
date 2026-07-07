@@ -104,88 +104,39 @@ func TestReadSupportsConfigFormats(t *testing.T) {
 }
 
 func TestReadPreservesYAMLTaskDirectiveOrder(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "install.conf.yaml")
-	if err := os.WriteFile(path, []byte(`
+	assertReadPreservesDirectiveOrder(t, "install.conf.yaml", `
 - shell:
     - [echo before, before]
   create:
     - tmp
   clean:
     - "~"
-`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	tasks, err := Read([]string{path})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(tasks) != 1 {
-		t.Fatalf("len(tasks) = %d, want 1", len(tasks))
-	}
-	got := actionDirectives(tasks[0].Actions())
-	expected := []string{"shell", "create", "clean"}
-	if strings.Join(got, ",") != strings.Join(expected, ",") {
-		t.Fatalf("action order = %#v, want %#v", got, expected)
-	}
+`, []string{"shell", "create", "clean"})
 }
 
 func TestReadPreservesJSONTaskDirectiveOrder(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "install.json")
-	if err := os.WriteFile(path, []byte(`[
+	assertReadPreservesDirectiveOrder(t, "install.json", `[
   {
     "shell": [["echo before", "before"]],
     "create": ["tmp"],
     "clean": ["~"]
   }
-]`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	tasks, err := Read([]string{path})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(tasks) != 1 {
-		t.Fatalf("len(tasks) = %d, want 1", len(tasks))
-	}
-	got := actionDirectives(tasks[0].Actions())
-	expected := []string{"shell", "create", "clean"}
-	if strings.Join(got, ",") != strings.Join(expected, ",") {
-		t.Fatalf("action order = %#v, want %#v", got, expected)
-	}
+]`, []string{"shell", "create", "clean"})
 }
 
 func TestReadPreservesJSON5TaskDirectiveOrder(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "install.json5")
-	if err := os.WriteFile(path, []byte(`[
+	assertReadPreservesDirectiveOrder(t, "install.json5", `[
   {
     // JSON5 allows comments, unquoted keys, and trailing commas.
     shell: [["echo before", "before"]],
     create: ["tmp"],
     clean: ["~"],
   },
-]`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	tasks, err := Read([]string{path})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(tasks) != 1 {
-		t.Fatalf("len(tasks) = %d, want 1", len(tasks))
-	}
-	got := actionDirectives(tasks[0].Actions())
-	expected := []string{"shell", "create", "clean"}
-	if strings.Join(got, ",") != strings.Join(expected, ",") {
-		t.Fatalf("action order = %#v, want %#v", got, expected)
-	}
+]`, []string{"shell", "create", "clean"})
 }
 
 func TestReadPreservesJSON5OrderWithDelimitersInStringsAndComments(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "install.json5")
-	if err := os.WriteFile(path, []byte(`[
+	assertReadPreservesDirectiveOrder(t, "install.json5", `[
   {
     // Delimiters in comments must not close the shell value: ] } ,
     shell: [
@@ -197,35 +148,41 @@ func TestReadPreservesJSON5OrderWithDelimitersInStringsAndComments(t *testing.T)
     ],
     clean: ["~"],
   },
-]`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	tasks, err := Read([]string{path})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(tasks) != 1 {
-		t.Fatalf("len(tasks) = %d, want 1", len(tasks))
-	}
-	got := actionDirectives(tasks[0].Actions())
-	expected := []string{"shell", "create", "clean"}
-	if strings.Join(got, ",") != strings.Join(expected, ",") {
-		t.Fatalf("action order = %#v, want %#v", got, expected)
-	}
+]`, []string{"shell", "create", "clean"})
 }
 
 func TestReadPreservesJSON5QuotedKeysWithDelimiters(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "install.json5")
-	if err := os.WriteFile(path, []byte(`[
+	assertReadPreservesDirectiveOrder(t, "install.json5", `[
   {
     "shell:with,delimiters}": ["true"],
     create: ["tmp"],
   },
-]`), 0o600); err != nil {
+]`, []string{"shell:with,delimiters}", "create"})
+}
+
+func TestReadPreservesTOMLTaskDirectiveOrder(t *testing.T) {
+	assertReadPreservesDirectiveOrder(t, "install.toml", `
+tasks = [
+  { shell = [["echo before", "before"]], create = ["tmp"], clean = ["~"] },
+]
+`, []string{"shell", "create", "clean"})
+}
+
+func TestReadPreservesTOMLArrayTableTaskDirectiveOrder(t *testing.T) {
+	assertReadPreservesDirectiveOrder(t, "install.toml", `
+[[tasks]]
+shell = [["echo before", "before"]]
+create = ["tmp"]
+clean = ["~"]
+`, []string{"shell", "create", "clean"})
+}
+
+func assertReadPreservesDirectiveOrder(t *testing.T, file, content string, expected []string) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), file)
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
-
 	tasks, err := Read([]string{path})
 	if err != nil {
 		t.Fatal(err)
@@ -234,17 +191,16 @@ func TestReadPreservesJSON5QuotedKeysWithDelimiters(t *testing.T) {
 		t.Fatalf("len(tasks) = %d, want 1", len(tasks))
 	}
 	got := actionDirectives(tasks[0].Actions())
-	expected := []string{"shell:with,delimiters}", "create"}
 	if strings.Join(got, ",") != strings.Join(expected, ",") {
 		t.Fatalf("action order = %#v, want %#v", got, expected)
 	}
 }
 
-func TestReadPreservesTOMLTaskDirectiveOrder(t *testing.T) {
+func TestReadDecodesTOMLStringsInOrderedTasks(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "install.toml")
 	if err := os.WriteFile(path, []byte(`
 tasks = [
-  { shell = [["echo before", "before"]], create = ["tmp"], clean = ["~"] },
+  { shell = [["echo hi", "line\nnext"]] },
 ]
 `), 0o600); err != nil {
 		t.Fatal(err)
@@ -257,35 +213,20 @@ tasks = [
 	if len(tasks) != 1 {
 		t.Fatalf("len(tasks) = %d, want 1", len(tasks))
 	}
-	got := actionDirectives(tasks[0].Actions())
-	expected := []string{"shell", "create", "clean"}
-	if strings.Join(got, ",") != strings.Join(expected, ",") {
-		t.Fatalf("action order = %#v, want %#v", got, expected)
+	actions := tasks[0].Actions()
+	if len(actions) != 1 || actions[0].Directive != "shell" {
+		t.Fatalf("actions = %#v, want one shell action", actions)
 	}
-}
-
-func TestReadPreservesTOMLArrayTableTaskDirectiveOrder(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "install.toml")
-	if err := os.WriteFile(path, []byte(`
-[[tasks]]
-shell = [["echo before", "before"]]
-create = ["tmp"]
-clean = ["~"]
-`), 0o600); err != nil {
-		t.Fatal(err)
+	items, ok := actions[0].Data.([]any)
+	if !ok || len(items) != 1 {
+		t.Fatalf("shell data = %#v, want one shell item", actions[0].Data)
 	}
-
-	tasks, err := Read([]string{path})
-	if err != nil {
-		t.Fatal(err)
+	command, ok := items[0].([]any)
+	if !ok || len(command) != 2 {
+		t.Fatalf("shell item = %#v, want command and description", items[0])
 	}
-	if len(tasks) != 1 {
-		t.Fatalf("len(tasks) = %d, want 1", len(tasks))
-	}
-	got := actionDirectives(tasks[0].Actions())
-	expected := []string{"shell", "create", "clean"}
-	if strings.Join(got, ",") != strings.Join(expected, ",") {
-		t.Fatalf("action order = %#v, want %#v", got, expected)
+	if command[1] != "line\nnext" {
+		t.Fatalf("description = %#v, want decoded newline", command[1])
 	}
 }
 

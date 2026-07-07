@@ -68,9 +68,9 @@ Run:
 dotbot-go validate -d ~/.dotfiles -c ~/.dotfiles/install.conf.yaml
 ```
 
-Validation checks that the config can be read, that directive payloads have
-supported shapes, and how many operations would be planned. It does not create
-directories, links, or run shell commands.
+Validation checks that the config can be read and that directive payloads have
+supported shapes. It also builds the plan to surface planning errors, but it
+does not create directories, links, or run shell commands.
 
 ## Step 4: Inspect Planned Operations
 

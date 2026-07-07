@@ -128,9 +128,8 @@ func tomlNodeValue(node *tomlunstable.Node) (any, error) {
 			out = insertTOMLKeyValue(out, tomlKeyParts(child.Key()), value)
 		}
 		return out, nil
-	case tomlunstable.String:
-		return string(node.Data), nil
-	case tomlunstable.Bool,
+	case tomlunstable.String,
+		tomlunstable.Bool,
 		tomlunstable.Integer,
 		tomlunstable.Float,
 		tomlunstable.DateTime,
@@ -144,6 +143,9 @@ func tomlNodeValue(node *tomlunstable.Node) (any, error) {
 }
 
 func tomlScalarValue(node *tomlunstable.Node) (any, error) {
+	if node.Kind == tomlunstable.String {
+		return string(node.Data), nil
+	}
 	var raw map[string]any
 	doc := []byte("value = " + string(node.Data) + "\n")
 	if err := toml.Unmarshal(doc, &raw); err != nil {

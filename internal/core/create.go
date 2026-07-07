@@ -18,84 +18,82 @@ func (CreateHandler) SupportsDryRun() bool { return true }
 
 // Validate checks create directive data without touching the filesystem.
 func (CreateHandler) Validate(ctx *Context, directive string, data any) error {
-	if paths, ok := asList(data); ok {
-		for _, item := range paths {
-			if _, ok := asString(item); !ok {
-				return fmt.Errorf("create directive item must be a string")
-			}
-		}
-		return nil
-	}
-	if m, ok := asMap(data); ok {
-		for _, path := range sortedKeys(m) {
-			options := m[path]
-			if options == nil {
-				continue
-			}
-			if _, ok := asMap(options); !ok {
-				return fmt.Errorf("create directive options for %s must be a map", path)
-			}
-		}
-		return nil
-	}
-	return fmt.Errorf("create directive must be a list or map")
+	_, err := createEntries(data)
+	return err
 }
 
 // Plan expands create directive data into directory operations.
 func (h CreateHandler) Plan(ctx *Context, directive string, data any) ([]Operation, error) {
-	if err := h.Validate(ctx, directive, data); err != nil {
+	entries, err := createEntries(data)
+	if err != nil {
 		return nil, err
 	}
-	operations := []Operation{}
-	if paths, ok := asList(data); ok {
-		for _, item := range paths {
-			path, _ := asString(item)
-			operations = append(operations, Operation{Directive: directive, Target: path})
-		}
-		return operations, nil
-	}
-	m, _ := asMap(data)
-	for _, path := range sortedKeys(m) {
-		operations = append(operations, Operation{Directive: directive, Target: path})
+	operations := make([]Operation, 0, len(entries))
+	for _, entry := range entries {
+		operations = append(operations, Operation{Directive: directive, Target: entry.path})
 	}
 	return operations, nil
 }
 
 // Handle creates directories requested by the create directive.
 func (CreateHandler) Handle(ctx *Context, directive string, data any) (bool, error) {
+	entries, err := createEntries(data)
+	if err != nil {
+		return false, err
+	}
 	success := true
 	defaults, _ := asMap(ctx.Defaults["create"])
-	paths, ok := asList(data)
-	if !ok {
-		if m, isMap := asMap(data); isMap {
-			for _, key := range sortedKeys(m) {
-				options := m[key]
-				mode := os.FileMode(0o777)
-				if defaults != nil {
-					mode = parseMode(defaults["mode"], mode)
-				}
-				if optionMap, ok := asMap(options); ok && optionMap != nil {
-					mode = parseMode(optionMap["mode"], mode)
-				}
-				success = createPath(ctx, key, mode) && success
-			}
-			return finish(ctx, success, "All paths have been set up", "Some paths were not successfully set up"), nil
-		}
-		return false, fmt.Errorf("create directive must be a list or map")
+	for _, entry := range entries {
+		success = createPath(ctx, entry.path, createMode(defaults, entry.options)) && success
 	}
+	return finish(ctx, success, "All paths have been set up", "Some paths were not successfully set up"), nil
+}
+
+type createEntry struct {
+	path    string
+	options map[string]any
+}
+
+func createEntries(data any) ([]createEntry, error) {
+	if paths, ok := asList(data); ok {
+		entries := make([]createEntry, 0, len(paths))
+		for _, item := range paths {
+			path, ok := asString(item)
+			if !ok {
+				return nil, fmt.Errorf("create directive item must be a string")
+			}
+			entries = append(entries, createEntry{path: path})
+		}
+		return entries, nil
+	}
+	if m, ok := asMap(data); ok {
+		entries := make([]createEntry, 0, len(m))
+		for _, path := range sortedKeys(m) {
+			options := m[path]
+			if options == nil {
+				entries = append(entries, createEntry{path: path})
+				continue
+			}
+			optionMap, ok := asMap(options)
+			if !ok {
+				return nil, fmt.Errorf("create directive options for %s must be a map", path)
+			}
+			entries = append(entries, createEntry{path: path, options: optionMap})
+		}
+		return entries, nil
+	}
+	return nil, fmt.Errorf("create directive must be a list or map")
+}
+
+func createMode(defaults, options map[string]any) os.FileMode {
 	mode := os.FileMode(0o777)
 	if defaults != nil {
 		mode = parseMode(defaults["mode"], mode)
 	}
-	for _, item := range paths {
-		path, ok := asString(item)
-		if !ok {
-			success = false
-			continue
-		}
-		success = createPath(ctx, path, mode) && success
+	if options != nil {
+		mode = parseMode(options["mode"], mode)
 	}
-	return finish(ctx, success, "All paths have been set up", "Some paths were not successfully set up"), nil
+	return mode
 }
 
 func createPath(ctx *Context, path string, mode os.FileMode) bool {

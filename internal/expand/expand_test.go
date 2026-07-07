@@ -9,6 +9,7 @@ import (
 func TestUser(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 
 	cases := []struct {
 		name string
@@ -53,10 +54,10 @@ func TestPath(t *testing.T) {
 		in   string
 		want string
 	}{
-		{name: "env only", in: "$EXPAND_TEST_VAR/x", want: "value/x"},
+		{name: "env only", in: "$EXPAND_TEST_VAR/x", want: filepath.Join("value", "x")},
 		{name: "tilde and env", in: "~/$EXPAND_TEST_VAR", want: filepath.Join(home, "value")},
-		{name: "plain", in: "plain/path", want: "plain/path"},
-		{name: "undefined env", in: "$EXPAND_TEST_MISSING/x", want: "/x"},
+		{name: "plain", in: "plain/path", want: filepath.Join("plain", "path")},
+		{name: "undefined env", in: "$EXPAND_TEST_MISSING/x", want: string(filepath.Separator) + "x"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

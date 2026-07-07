@@ -52,7 +52,9 @@ func (OSRunner) Run(ctx context.Context, command string, opts Options) int {
 		devnullW = nil
 	}
 	if devnullW != nil {
-		defer devnullW.Close()
+		defer func() {
+			_ = devnullW.Close()
+		}()
 	}
 	if opts.EnableStdout {
 		cmd.Stdout = os.Stdout

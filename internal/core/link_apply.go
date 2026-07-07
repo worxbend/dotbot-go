@@ -23,7 +23,7 @@ func processOneLink(ctx *Context, target, linkName string, opts linkOptions, glo
 		didBackup, backupSuccess = backup(ctx, link)
 		success = backupSuccess && success
 	}
-	if (opts.Force || opts.Relink) && !(didBackup && backupSuccess) {
+	if (opts.Force || opts.Relink) && (!didBackup || !backupSuccess) {
 		var deleteSuccess bool
 		didDelete, deleteSuccess = deleteLink(ctx, link, opts)
 		success = deleteSuccess && success

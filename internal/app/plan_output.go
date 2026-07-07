@@ -46,6 +46,15 @@ func writePlanOutput(
 	}
 }
 
+func isStructuredOutput(format string) bool {
+	switch format {
+	case "json":
+		return true
+	default:
+		return false
+	}
+}
+
 func newPlanDocument(plan core.Plan, taskCount, configCount int, base string) planDocument {
 	operations := make([]planOperation, 0, len(plan.Operations))
 	for _, operation := range plan.Operations {

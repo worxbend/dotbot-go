@@ -83,7 +83,9 @@ func Run(ctx context.Context, opts Options, stdout io.Writer, deps Dependencies)
 	deps = deps.withDefaults()
 	logger := log.New(stdout)
 	if opts.ShowVersion {
-		fmt.Fprintf(stdout, "Dotbot-Go version %s\n", Version)
+		if _, err := fmt.Fprintf(stdout, "Dotbot-Go version %s\n", Version); err != nil {
+			return err
+		}
 		return nil
 	}
 	configureLogger(logger, opts)
@@ -100,10 +102,14 @@ func Run(ctx context.Context, opts Options, stdout io.Writer, deps Dependencies)
 		logger.Error(err.Error())
 		return ErrExit
 	}
-	if len(tasks) == 0 && !(opts.Plan && opts.Output == "json") {
+	if len(tasks) == 0 && (!opts.Plan || !isStructuredOutput(opts.Output)) {
 		logger.Warning("No tasks given in configuration, no work to do")
 	}
-	base := baseDirectory(opts)
+	base, err := baseDirectory(opts)
+	if err != nil {
+		logger.Error(err.Error())
+		return ErrExit
+	}
 	coreOpts := coreOptions(opts)
 	if opts.Validate || opts.Plan {
 		dispatcher, err := newDispatcher(base, coreOpts, logger, deps)
@@ -161,11 +167,14 @@ func configureColor(logger *log.Logger, opts Options) error {
 	return nil
 }
 
-func baseDirectory(opts Options) string {
+func baseDirectory(opts Options) (string, error) {
 	if opts.BaseDirectory == "" {
-		return filepath.Dir(abs(opts.ConfigFiles[0]))
+		if len(opts.ConfigFiles) == 0 {
+			return "", fmt.Errorf("no configuration file specified")
+		}
+		return filepath.Dir(abs(opts.ConfigFiles[0])), nil
 	}
-	return abs(opts.BaseDirectory)
+	return abs(opts.BaseDirectory), nil
 }
 
 func coreOptions(opts Options) core.Options {

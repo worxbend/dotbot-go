@@ -64,7 +64,7 @@ func (l *Logger) log(level Level, msg string) {
 	if level < l.level {
 		return
 	}
-	fmt.Fprintf(
+	_, _ = fmt.Fprintf(
 		l.out,
 		"%s%s%s %s%s%s\n",
 		l.colorFor(level),

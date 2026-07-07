@@ -64,6 +64,12 @@ func TestRunRejectsMissingConfig(t *testing.T) {
 	}
 }
 
+func TestBaseDirectoryRejectsMissingConfigFileFallback(t *testing.T) {
+	if _, err := baseDirectory(Options{}); err == nil {
+		t.Fatal("expected baseDirectory to reject empty config files without base directory")
+	}
+}
+
 func TestRunUsesInjectedDependencies(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "install.conf.yaml")
