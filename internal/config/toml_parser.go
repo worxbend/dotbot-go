@@ -37,7 +37,7 @@ func tomlOrderedTaskLists(data []byte) (map[string][]any, error) {
 		switch expr.Kind {
 		case tomlunstable.KeyValue:
 			keys := tomlKeyParts(expr.Key())
-			value, err := tomlNodeValue(expr.Value())
+			value, err := tomlNodeValue(&parser, expr.Value())
 			if err != nil {
 				return nil, err
 			}
@@ -99,7 +99,7 @@ func applyTOMLTaskOrder(raw any, taskLists map[string][]any) {
 	}
 }
 
-func tomlNodeValue(node *tomlunstable.Node) (any, error) {
+func tomlNodeValue(parser *tomlunstable.Parser, node *tomlunstable.Node) (any, error) {
 	if node == nil || !node.Valid() {
 		return nil, fmt.Errorf("invalid toml value")
 	}
@@ -109,7 +109,7 @@ func tomlNodeValue(node *tomlunstable.Node) (any, error) {
 		out := []any{}
 		children := node.Children()
 		for children.Next() {
-			value, err := tomlNodeValue(children.Node())
+			value, err := tomlNodeValue(parser, children.Node())
 			if err != nil {
 				return nil, err
 			}
@@ -121,7 +121,7 @@ func tomlNodeValue(node *tomlunstable.Node) (any, error) {
 		children := node.Children()
 		for children.Next() {
 			child := children.Node()
-			value, err := tomlNodeValue(child.Value())
+			value, err := tomlNodeValue(parser, child.Value())
 			if err != nil {
 				return nil, err
 			}
@@ -136,18 +136,21 @@ func tomlNodeValue(node *tomlunstable.Node) (any, error) {
 		tomlunstable.LocalDate,
 		tomlunstable.LocalTime,
 		tomlunstable.LocalDateTime:
-		return tomlScalarValue(node)
+		return tomlScalarValue(parser, node)
 	default:
 		return nil, fmt.Errorf("unsupported toml value kind %s", node.Kind)
 	}
 }
 
-func tomlScalarValue(node *tomlunstable.Node) (any, error) {
-	if node.Kind == tomlunstable.String {
-		return string(node.Data), nil
-	}
+func tomlScalarValue(parser *tomlunstable.Parser, node *tomlunstable.Node) (any, error) {
 	var raw map[string]any
-	doc := []byte("value = " + string(node.Data) + "\n")
+	doc := []byte("value = ")
+	if node.Kind == tomlunstable.String {
+		doc = append(doc, parser.Raw(node.Raw)...)
+	} else {
+		doc = append(doc, node.Data...)
+	}
+	doc = append(doc, '\n')
 	if err := toml.Unmarshal(doc, &raw); err != nil {
 		return nil, err
 	}
