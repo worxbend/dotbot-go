@@ -21,6 +21,8 @@ parts:
   dotbot-go:
     plugin: go
     source: .
+    build-snaps:
+      - go/1.22/stable
     override-build: |
       version="$(git -C "$CRAFT_PART_SRC" describe --tags --always --dirty 2>/dev/null | sed 's/^v//')"
       if [ -z "$version" ]; then
