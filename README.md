@@ -26,6 +26,16 @@ Common examples:
 
 ## Quick Start
 
+### Install With A Script
+
+Install a prebuilt release with:
+
+```sh
+curl --proto '=https' --tlsv1.2 -sSf https://github.com/worxbend/dotbot-go/releases/latest/download/install.sh | sh
+```
+
+Set `DOTBOT_VERSION` to pin a specific release tag, or `DOTBOT_INSTALL_DIR` to install elsewhere. The script also adds the install directory to `PATH` in `~/.bashrc` and `~/.zshrc` if it's missing.
+
 ### 1. Build The Binary
 
 From this repository:

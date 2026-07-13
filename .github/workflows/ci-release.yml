@@ -253,6 +253,12 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.tag.outputs.checkout_ref }}
+          persist-credentials: false
+
       - name: Download release artifacts
         uses: actions/download-artifact@v4
         with:
@@ -277,4 +283,4 @@ jobs:
               --title "dotbot-go $TAG_NAME" \
               --notes "Linux and macOS builds for amd64 and arm64."
           fi
-          gh release upload "$TAG_NAME" dist/* --clobber
+          gh release upload "$TAG_NAME" dist/* scripts/install.sh --clobber
