@@ -1,0 +1,65 @@
+name: Snap Store Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build and publish (e.g. v0.2.1). Defaults to the latest tag."
+        required: false
+        type: string
+      channel:
+        description: "Snap Store channel to release to"
+        required: true
+        default: stable
+        type: choice
+        options:
+          - stable
+          - candidate
+          - beta
+          - edge
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-publish:
+    name: Build and publish snap
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Determine release channel
+        id: channel
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_CHANNEL: ${{ inputs.channel }}
+        run: |
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            channel="$INPUT_CHANNEL"
+          elif [[ "$REF_NAME" == *-* ]]; then
+            channel="candidate"
+          else
+            channel="stable"
+          fi
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+
+      - name: Build snap
+        id: build
+        uses: snapcore/action-build@v1
+
+      - name: Publish snap to the Snap Store
+        uses: snapcore/action-publish@v1
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+        with:
+          snap: ${{ steps.build.outputs.snap }}
+          release: ${{ steps.channel.outputs.channel }}

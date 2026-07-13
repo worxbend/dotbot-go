@@ -1,0 +1,36 @@
+name: dotbot-go
+base: core22
+summary: Set up a computer from a dotfiles repository
+description: |
+  dotbot-go is a small command-line tool that helps you set up a computer
+  from a dotfiles repository. It is a Go implementation of the core Dotbot
+  workflow: creating directories, linking dotfiles into your home directory,
+  removing broken symlinks, and running setup commands.
+grade: stable
+confinement: classic
+adopt-info: dotbot-go
+
+architectures:
+  - build-on: amd64
+
+apps:
+  dotbot-go:
+    command: bin/dotbot-go
+
+parts:
+  dotbot-go:
+    plugin: go
+    source: .
+    override-build: |
+      version="$(git -C "$CRAFT_PART_SRC" describe --tags --always --dirty 2>/dev/null | sed 's/^v//')"
+      if [ -z "$version" ]; then
+        version="0.0.0"
+      fi
+
+      mkdir -p "$CRAFT_PART_INSTALL/bin"
+      cd "$CRAFT_PART_SRC"
+      CGO_ENABLED=0 go build -buildvcs=false -trimpath \
+        -ldflags="-s -w -X dotbot-go/internal/app.Version=$version" \
+        -o "$CRAFT_PART_INSTALL/bin/dotbot-go" ./cmd/dotbot-go
+
+      craftctl set version="$version"
