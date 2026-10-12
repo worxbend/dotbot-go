@@ -91,19 +91,35 @@ add_path_line() {
   marker="# added by dotbot-go installer"
 
   if [ -f "$rc_file" ] && grep -qF "$marker" "$rc_file" 2>/dev/null; then
-    return 0
+    # Rewrite through the original file to preserve permissions and symlinks.
+    awk -v marker="$marker" 'index($0, marker) == 0' "$rc_file" > "$tmp_dir/rc"
+    cat "$tmp_dir/rc" > "$rc_file"
+  else
+    case ":$PATH:" in
+      *":$INSTALL_DIR:"*) return 0 ;;
+    esac
   fi
-  printf '\nexport PATH="%s:$PATH" %s\n' "$INSTALL_DIR" "$marker" >> "$rc_file"
-  echo "Added $INSTALL_DIR to PATH in $rc_file"
+  escaped_install_dir=$(printf '%s' "$INSTALL_DIR" | sed 's/[\\`"$]/\\&/g')
+  printf '\nexport PATH="%s:$PATH" %s\n' "$escaped_install_dir" "$marker" >> "$rc_file"
+  echo "Updated $INSTALL_DIR in PATH in $rc_file"
 }
 
-case ":$PATH:" in
-  *":$INSTALL_DIR:"*) ;;
-  *)
-    add_path_line "$HOME/.bashrc"
-    add_path_line "$HOME/.zshrc"
-    echo "Restart your shell (or run 'source ~/.bashrc' / 'source ~/.zshrc') to update PATH."
-    ;;
-esac
+add_path_line "$HOME/.bashrc"
+add_path_line "$HOME/.zshrc"
+
+if [ "$os" = Darwin ]; then
+  # Bash reads only the first existing login profile in this order.
+  bash_profile="$HOME/.bash_profile"
+  if [ ! -f "$bash_profile" ]; then
+    if [ -f "$HOME/.bash_login" ]; then
+      bash_profile="$HOME/.bash_login"
+    elif [ -f "$HOME/.profile" ]; then
+      bash_profile="$HOME/.profile"
+    fi
+  fi
+  add_path_line "$bash_profile"
+fi
+
+echo "Restart your shell to update PATH."
 
 echo "Run '$BIN_NAME --help' to get started."

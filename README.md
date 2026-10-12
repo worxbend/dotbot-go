@@ -34,7 +34,7 @@ Install a prebuilt release with:
 curl --proto '=https' --tlsv1.2 -sSf https://github.com/worxbend/dotbot-go/releases/latest/download/install.sh | sh
 ```
 
-Set `DOTBOT_VERSION` to pin a specific release tag, or `DOTBOT_INSTALL_DIR` to install elsewhere. The script also adds the install directory to `PATH` in `~/.bashrc` and `~/.zshrc` if it's missing.
+Set `DOTBOT_VERSION` to pin a specific release tag, or `DOTBOT_INSTALL_DIR` to install elsewhere. The script also adds the install directory to `PATH` in `~/.bashrc` and `~/.zshrc` if it's missing, and updates its entries when the install directory changes. On macOS, it also updates the active Bash login profile (`~/.bash_profile`, `~/.bash_login`, or `~/.profile`), creating `~/.bash_profile` if none exists.
 
 ### 1. Build The Binary
 
