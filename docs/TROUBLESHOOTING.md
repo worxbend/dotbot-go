@@ -1,16 +1,18 @@
 # Troubleshooting Guide
 
+Commands below use `dotbot`, provided by script installation, release archives, and source builds. Snap users should use `dotbot-go` instead.
+
 Start every debugging session by inspecting the plan, then run a verbose dry run:
 
 ```bash
-dotbot-go plan -c install.conf.yaml
+dotbot plan -c install.conf.yaml
 ```
 
 ```bash
-dotbot-go -c install.conf.yaml --dry-run -vv
+dotbot -c install.conf.yaml --dry-run -vv
 ```
 
-These commands show what `dotbot-go` plans to do without changing your filesystem.
+These commands show proposed actions without changing your filesystem or executing shell commands. For links with `link.if`, dry run reports the condition and destination, then skips condition execution and filesystem preview. The outcome remains unknown until an actual run.
 
 ## `unsupported config file format`
 
@@ -102,15 +104,15 @@ Use `force` carefully.
 Run with `-vv`:
 
 ```bash
-dotbot-go -c install.conf.yaml -vv
+dotbot -c install.conf.yaml -vv
 ```
 
-At verbosity level `-vv`, shell command stdout and stderr are shown.
+At verbosity level `-vv`, shell command stdout and stderr are shown. Each shell command and `link.if` condition has a 10-minute timeout with no CLI or config override. Check this limit when a long-running command fails.
 
 You can also skip shell commands while testing links:
 
 ```bash
-dotbot-go -c install.conf.yaml --except shell --dry-run
+dotbot -c install.conf.yaml --except shell --dry-run
 ```
 
 ## Colors Look Wrong
@@ -118,13 +120,13 @@ dotbot-go -c install.conf.yaml --except shell --dry-run
 Disable color:
 
 ```bash
-dotbot-go -c install.conf.yaml --no-color
+dotbot -c install.conf.yaml --no-color
 ```
 
 Force color when output is redirected:
 
 ```bash
-dotbot-go -c install.conf.yaml --force-color
+dotbot -c install.conf.yaml --force-color
 ```
 
 ## I Am Afraid To Run It
@@ -132,10 +134,10 @@ dotbot-go -c install.conf.yaml --force-color
 Use this workflow:
 
 ```bash
-dotbot-go -c install.conf.yaml --dry-run
-dotbot-go -c install.conf.yaml --only create
-dotbot-go -c install.conf.yaml --only link --dry-run
-dotbot-go -c install.conf.yaml --only link
+dotbot -c install.conf.yaml --dry-run
+dotbot -c install.conf.yaml --only create
+dotbot -c install.conf.yaml --only link --dry-run
+dotbot -c install.conf.yaml --only link
 ```
 
 This applies the config in smaller steps.

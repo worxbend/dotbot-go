@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"dotbot-go/internal/expand"
+	"dotbot-go/internal/fsops"
 )
 
 // CleanHandler implements the clean directive.
@@ -125,7 +126,7 @@ func cleanTarget(ctx *Context, target string, force, recursive bool) bool {
 				continue
 			}
 			pointsAt := linkTargetPath(path, targetPath)
-			if inDirectory(pointsAt, ctx.BaseDirectory) || force {
+			if inDirectory(ctx.FS, pointsAt, ctx.BaseDirectory) || force {
 				if ctx.Options.DryRun {
 					ctx.Log.Action(fmt.Sprintf("Would remove invalid link %s -> %s", path, pointsAt))
 				} else {
@@ -144,12 +145,12 @@ func cleanTarget(ctx *Context, target string, force, recursive bool) bool {
 	return success
 }
 
-func inDirectory(path, directory string) bool {
-	dir, err := filepath.EvalSymlinks(directory)
+func inDirectory(fs fsops.FS, path, directory string) bool {
+	dir, err := fs.Realpath(directory)
 	if err != nil {
 		dir = directory
 	}
-	p, err := filepath.EvalSymlinks(path)
+	p, err := fs.Realpath(path)
 	if err != nil {
 		p = path
 	}

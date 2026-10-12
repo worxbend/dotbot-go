@@ -5,20 +5,22 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"dotbot-go/internal/fsops"
 )
 
 func hasGlobChars(path string) bool {
 	return strings.ContainsAny(path, "?*[")
 }
 
-func createGlobResults(pattern string, exclude []string) ([]string, error) {
-	include, err := glob(pattern)
+func createGlobResults(fs fsops.FS, pattern string, exclude []string) ([]string, error) {
+	include, err := glob(fs, pattern)
 	if err != nil {
 		return nil, err
 	}
 	excluded := map[string]bool{}
 	for _, ex := range exclude {
-		items, err := glob(ex)
+		items, err := glob(fs, ex)
 		if err != nil {
 			return nil, err
 		}
@@ -36,7 +38,7 @@ func createGlobResults(pattern string, exclude []string) ([]string, error) {
 	return out, nil
 }
 
-func glob(pattern string) ([]string, error) {
+func glob(fs fsops.FS, pattern string) ([]string, error) {
 	matches := []string{}
 	if strings.Contains(pattern, "**") {
 		root := pattern[:strings.Index(pattern, "**")]
@@ -44,7 +46,7 @@ func glob(pattern string) ([]string, error) {
 		if root == "" {
 			root = "."
 		}
-		if err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err := fs.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 			if err != nil {
 				return err
 			}
@@ -64,7 +66,7 @@ func glob(pattern string) ([]string, error) {
 		}
 		return matches, nil
 	}
-	found, err := filepath.Glob(pattern)
+	found, err := fs.Glob(pattern)
 	if err != nil {
 		return nil, err
 	}

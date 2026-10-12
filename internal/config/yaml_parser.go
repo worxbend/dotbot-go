@@ -15,6 +15,12 @@ func (YAMLParser) Parse(path string, data []byte) (any, error) {
 	if err := yaml.Unmarshal(data, &node); err != nil {
 		return nil, err
 	}
+	// Validate aliases, duplicate keys and merge operands with the YAML decoder
+	// before traversing nodes to preserve source order.
+	var decoded any
+	if err := node.Decode(&decoded); err != nil {
+		return nil, err
+	}
 	return yamlNodeValue(&node), nil
 }
 
@@ -35,14 +41,7 @@ func yamlNodeValue(node *yaml.Node) any {
 		}
 		return out
 	case yaml.MappingNode:
-		out := make(orderedMap, 0, len(node.Content)/2)
-		for i := 0; i+1 < len(node.Content); i += 2 {
-			out = append(out, orderedPair{
-				key:   fmt.Sprint(yamlNodeValue(node.Content[i])),
-				value: yamlNodeValue(node.Content[i+1]),
-			})
-		}
-		return out
+		return yamlMappingValue(node)
 	case yaml.ScalarNode:
 		var value any
 		if err := node.Decode(&value); err == nil {
@@ -54,6 +53,39 @@ func yamlNodeValue(node *yaml.Node) any {
 	default:
 		return nil
 	}
+}
+
+func yamlMappingValue(node *yaml.Node) orderedMap {
+	explicit := map[string]bool{}
+	for i := 0; i < len(node.Content); i += 2 {
+		if node.Content[i].Tag != "!!merge" {
+			explicit[fmt.Sprint(yamlNodeValue(node.Content[i]))] = true
+		}
+	}
+	out := orderedMap{}
+	merged := map[string]bool{}
+	for i := 0; i < len(node.Content); i += 2 {
+		key, value := node.Content[i], node.Content[i+1]
+		if key.Tag != "!!merge" {
+			out = append(out, orderedPair{key: fmt.Sprint(yamlNodeValue(key)), value: yamlNodeValue(value)})
+			continue
+		}
+		sources := []any{yamlNodeValue(value)}
+		if sequence, ok := sources[0].([]any); ok {
+			sources = sequence
+		}
+		for _, source := range sources {
+			pairs, _ := source.(orderedMap)
+			for _, pair := range pairs {
+				// Explicit keys win; earlier mappings in a merge sequence win.
+				if !explicit[pair.key] && !merged[pair.key] {
+					out = append(out, pair)
+					merged[pair.key] = true
+				}
+			}
+		}
+	}
+	return out
 }
 
 var _ Parser = YAMLParser{}

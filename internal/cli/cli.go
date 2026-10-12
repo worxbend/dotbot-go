@@ -65,7 +65,7 @@ func ExecuteContext(ctx context.Context, args []string, stdout, stderr io.Writer
 
 func newRootCommand(ctx context.Context, opts *options, stdout io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:           "dotbot-go",
+		Use:           "dotbot",
 		Short:         "A Go port of Dotbot for bootstrapping dotfiles",
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
@@ -185,7 +185,9 @@ func renderHelp(cmd *cobra.Command, stdout io.Writer) string {
 
 func writeHelpUsage(b *strings.Builder, color bool, cmd *cobra.Command) {
 	helpSection(b, color, "Usage")
-	fmt.Fprintf(b, "  %s\n\n", cmd.UseLine())
+	fmt.Fprintf(b, "  %s\n", cmd.UseLine())
+	fmt.Fprintln(b, "  Snap installations use dotbot-go instead of dotbot.")
+	fmt.Fprintln(b)
 }
 
 func writeHelpExamples(b *strings.Builder, color bool, cmd *cobra.Command) {
@@ -199,24 +201,24 @@ func writeHelpExamples(b *strings.Builder, color bool, cmd *cobra.Command) {
 func helpExamples(cmd *cobra.Command) []string {
 	if len(cmd.Commands()) > 0 {
 		return []string{
-			"dotbot-go -c install.conf.yaml",
-			"dotbot-go validate -c install.conf.yaml",
-			"dotbot-go plan -c install.conf.yaml --output json",
-			"dotbot-go -d ~/.dotfiles -c ~/.dotfiles/install.conf.yaml --dry-run",
-			"dotbot-go -c install.conf.yaml --only link -vv",
+			"dotbot -c install.conf.yaml",
+			"dotbot validate -c install.conf.yaml",
+			"dotbot plan -c install.conf.yaml --output json",
+			"dotbot -d ~/.dotfiles -c ~/.dotfiles/install.conf.yaml --dry-run",
+			"dotbot -c install.conf.yaml --only link -vv",
 		}
 	}
 	if cmd.Name() == "plan" {
 		return []string{
-			"dotbot-go plan -c install.conf.yaml",
-			"dotbot-go plan -d ~/.dotfiles -c ~/.dotfiles/install.conf.yaml",
-			"dotbot-go plan -c install.conf.yaml --output json",
+			"dotbot plan -c install.conf.yaml",
+			"dotbot plan -d ~/.dotfiles -c ~/.dotfiles/install.conf.yaml",
+			"dotbot plan -c install.conf.yaml --output json",
 		}
 	}
 	return []string{
-		"dotbot-go validate -c install.conf.yaml",
-		"dotbot-go validate -d ~/.dotfiles -c ~/.dotfiles/install.conf.yaml",
-		"dotbot-go validate -c install.conf.yaml --only link",
+		"dotbot validate -c install.conf.yaml",
+		"dotbot validate -d ~/.dotfiles -c ~/.dotfiles/install.conf.yaml",
+		"dotbot validate -c install.conf.yaml --only link",
 	}
 }
 

@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"fmt"
 
 	sh "dotbot-go/internal/shell"
@@ -67,6 +68,12 @@ func (ShellHandler) Handle(ctx *Context, directive string, data any) (bool, erro
 			continue
 		}
 		ret := ctx.Shell.Run(ctx.RunContext, cmd, opts.runnerOptions(ctx))
+		if err := ctx.RunContext.Err(); err != nil {
+			return false, err
+		}
+		if ret == 130 || ret == 143 {
+			return false, context.Canceled
+		}
 		if ret != 0 {
 			success = false
 			ctx.Log.Warning(fmt.Sprintf("Command [%s] failed", cmd))

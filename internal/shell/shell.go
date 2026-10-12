@@ -26,6 +26,7 @@ type Options struct {
 // Runner executes shell command strings for the shell directive.
 type Runner interface {
 	// Run executes command and returns its process exit code.
+	// Unix signal termination is reported as 128 plus the signal number.
 	Run(ctx context.Context, command string, opts Options) int
 }
 
@@ -47,6 +48,8 @@ func (OSRunner) Run(ctx context.Context, command string, opts Options) int {
 	} else {
 		cmd.Stdin = nil
 	}
+	restoreTerminal := configureProcessCancellation(cmd)
+	defer restoreTerminal()
 	devnullW, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
 	if err != nil {
 		devnullW = nil
@@ -70,12 +73,12 @@ func (OSRunner) Run(ctx context.Context, command string, opts Options) int {
 	} else {
 		cmd.Stderr = io.Discard
 	}
-	err = cmd.Run()
+	err = runCommand(cmd, restoreTerminal)
 	if err == nil {
 		return 0
 	}
 	if exitErr, ok := err.(*exec.ExitError); ok {
-		return exitErr.ExitCode()
+		return processExitCode(exitErr)
 	}
 	return 1
 }

@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"dotbot-go/internal/fsops"
 )
 
 func TestHasGlobChars(t *testing.T) {
@@ -99,7 +101,7 @@ func TestCreateGlobResults(t *testing.T) {
 	write(filepath.Join(sub, "c.conf"))
 
 	t.Run("flat glob", func(t *testing.T) {
-		got, err := createGlobResults(filepath.Join(root, "*.conf"), nil)
+		got, err := createGlobResults(fsops.OSFS{}, filepath.Join(root, "*.conf"), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -108,7 +110,7 @@ func TestCreateGlobResults(t *testing.T) {
 	})
 
 	t.Run("flat glob with exclude", func(t *testing.T) {
-		got, err := createGlobResults(filepath.Join(root, "*.conf"), []string{filepath.Join(root, "b.conf")})
+		got, err := createGlobResults(fsops.OSFS{}, filepath.Join(root, "*.conf"), []string{filepath.Join(root, "b.conf")})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -117,7 +119,7 @@ func TestCreateGlobResults(t *testing.T) {
 	})
 
 	t.Run("doublestar glob", func(t *testing.T) {
-		got, err := createGlobResults(filepath.Join(root, "**", "*.conf"), nil)
+		got, err := createGlobResults(fsops.OSFS{}, filepath.Join(root, "**", "*.conf"), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -130,13 +132,13 @@ func TestCreateGlobResults(t *testing.T) {
 	})
 
 	t.Run("malformed include pattern errors", func(t *testing.T) {
-		if _, err := createGlobResults("[", nil); err == nil {
+		if _, err := createGlobResults(fsops.OSFS{}, "[", nil); err == nil {
 			t.Fatal("expected error for malformed include pattern")
 		}
 	})
 
 	t.Run("malformed exclude pattern errors", func(t *testing.T) {
-		if _, err := createGlobResults(filepath.Join(root, "*.conf"), []string{"["}); err == nil {
+		if _, err := createGlobResults(fsops.OSFS{}, filepath.Join(root, "*.conf"), []string{"["}); err == nil {
 			t.Fatal("expected error for malformed exclude pattern")
 		}
 	})

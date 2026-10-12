@@ -12,7 +12,7 @@
 
 - Existing regular files block symlink creation unless `force` or `backup` semantics apply.
 - Missing targets fail unless `ignore-missing` is set.
-- Dry-run emits actions without performing filesystem mutations.
+- Dry-run emits actions without performing filesystem mutations or executing shell commands, including `link.if` conditions. It reports each conditional link's condition and destination, then skips its filesystem preview; the outcome remains unknown until an actual run.
 - Multiple config files are concatenated before dispatch.
 
 ## Documented Drift

@@ -9,7 +9,7 @@ You write one config file that says:
 - remove broken old symlinks
 - run these setup commands
 
-Then you run `dotbot-go`, preview the changes, and apply them.
+Then you run `dotbot`, preview the changes, and apply them.
 
 This project is a Go implementation of the core [Dotbot](https://github.com/anishathalye/dotbot) workflow. It keeps the familiar config style while shipping as a single binary.
 
@@ -35,6 +35,8 @@ curl --proto '=https' --tlsv1.2 -sSf https://github.com/worxbend/dotbot-go/relea
 ```
 
 Set `DOTBOT_VERSION` to pin a specific release tag, or `DOTBOT_INSTALL_DIR` to install elsewhere. The script also adds the install directory to `PATH` in `~/.bashrc` and `~/.zshrc` if it's missing, and updates its entries when the install directory changes. On macOS, it also updates the active Bash login profile (`~/.bash_profile`, `~/.bash_login`, or `~/.profile`), creating `~/.bash_profile` if none exists.
+
+The script and release archives provide the `dotbot` command. Source builds below use the same name. Snap installations expose `dotbot-go`; replace `dotbot` with `dotbot-go` in the commands in these guides when using Snap. Restart your shell after script installation to load the updated `PATH`.
 
 ### 1. Build The Binary
 
@@ -87,7 +89,7 @@ Create `install.conf.yaml` in your dotfiles repository:
 In plain English, this means:
 
 - use sensible defaults for links
-- clean broken symlinks in your home directory
+- clean broken symlinks directly in your home directory that point into the base directory
 - create a couple of folders
 - link files from the repo into your home directory
 - update Git submodules
@@ -125,7 +127,7 @@ Always run a dry run first:
 ./bin/dotbot -c install.conf.yaml --dry-run
 ```
 
-Dry run prints what would happen without changing your filesystem.
+Dry run prints proposed changes without changing your filesystem or running shell commands. For links with `link.if`, it reports the condition and destination, then skips both condition execution and filesystem preview. The outcome remains unknown until an actual run.
 
 ### 6. Apply The Config
 
@@ -147,17 +149,17 @@ dotfiles/
 └── nvim/
 ```
 
-Run `dotbot-go` from that repository:
+Run `dotbot` from that repository:
 
 ```bash
 cd ~/.dotfiles
-dotbot-go -c install.conf.yaml
+dotbot -c install.conf.yaml
 ```
 
 Or point to the repository explicitly:
 
 ```bash
-dotbot-go -d ~/.dotfiles -c ~/.dotfiles/install.conf.yaml
+dotbot -d ~/.dotfiles -c ~/.dotfiles/install.conf.yaml
 ```
 
 The `-d` option sets the base directory. Relative paths in your config, such as `vimrc` or `nvim`, are resolved from that directory.
@@ -196,6 +198,8 @@ Directives are the actions in your config file. They run in the order you write 
 | `link` | Creates symlinks or hardlinks |
 | `shell` | Runs shell commands |
 
+Shell commands and `link.if` conditions have a 10-minute timeout per command. The CLI and config do not expose a timeout override.
+
 More detail: [User Guide](docs/USER_GUIDE.md)
 
 ## Common Commands
@@ -203,7 +207,7 @@ More detail: [User Guide](docs/USER_GUIDE.md)
 Validate without applying changes:
 
 ```bash
-dotbot-go validate -c install.conf.yaml
+dotbot validate -c install.conf.yaml
 ```
 
 This reports whether the configuration is valid and how many operations would be planned.
@@ -211,55 +215,55 @@ This reports whether the configuration is valid and how many operations would be
 Print planned operations:
 
 ```bash
-dotbot-go plan -c install.conf.yaml
+dotbot plan -c install.conf.yaml
 ```
 
 Print planned operations as JSON:
 
 ```bash
-dotbot-go plan -c install.conf.yaml --output json
+dotbot plan -c install.conf.yaml --output json
 ```
 
 Preview without changing files:
 
 ```bash
-dotbot-go -c install.conf.yaml --dry-run
+dotbot -c install.conf.yaml --dry-run
 ```
 
 Run only link tasks:
 
 ```bash
-dotbot-go -c install.conf.yaml --only link
+dotbot -c install.conf.yaml --only link
 ```
 
 Skip shell commands:
 
 ```bash
-dotbot-go -c install.conf.yaml --except shell
+dotbot -c install.conf.yaml --except shell
 ```
 
 Show more output:
 
 ```bash
-dotbot-go -vv -c install.conf.yaml
+dotbot -vv -c install.conf.yaml
 ```
 
 Disable color:
 
 ```bash
-dotbot-go -c install.conf.yaml --no-color
+dotbot -c install.conf.yaml --no-color
 ```
 
 Force color when piping output:
 
 ```bash
-dotbot-go -c install.conf.yaml --force-color
+dotbot -c install.conf.yaml --force-color
 ```
 
 Stop after the first failed directive:
 
 ```bash
-dotbot-go -c install.conf.yaml --exit-on-failure
+dotbot -c install.conf.yaml --exit-on-failure
 ```
 
 ## Safe Linking Rules
@@ -281,12 +285,14 @@ Example:
       backup: true
 ```
 
+Backups are stored inside a new private directory named `<destination>.dotbot-backup.<timestamp>-<random>`. The original file or directory is moved into it under its original basename. Existing backups are preserved. If backup reservation or the move fails, the original destination remains in place. To restore a backup, remove the replacement link and move the saved file or directory back to its original destination.
+
 ## Troubleshooting
 
 If something looks wrong, start here:
 
 ```bash
-dotbot-go -c install.conf.yaml --dry-run -vv
+dotbot -c install.conf.yaml --dry-run -vv
 ```
 
 Common problems:

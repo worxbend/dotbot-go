@@ -1,6 +1,7 @@
 package fsops
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 )
@@ -21,6 +22,11 @@ type FS interface {
 	IsSymlink(string) bool
 	ListDir(string) ([]string, error)
 	MkdirAll(string, os.FileMode) error
+	// MkdirTemp reserves a new private directory with an exclusive generated name.
+	MkdirTemp(string, string) (string, error)
+	// Glob and WalkDir expose traversal through the same adapter as mutation.
+	Glob(string) ([]string, error)
+	WalkDir(string, fs.WalkDirFunc) error
 	Readlink(string) (string, error)
 	Realpath(string) (string, error)
 	Remove(string) error
@@ -55,15 +61,18 @@ func (OSFS) ListDir(path string) ([]string, error) {
 	}
 	return names, nil
 }
-func (OSFS) MkdirAll(path string, mode os.FileMode) error { return os.MkdirAll(path, mode) }
-func (OSFS) Readlink(path string) (string, error)         { return os.Readlink(path) }
-func (OSFS) Realpath(path string) (string, error)         { return filepath.EvalSymlinks(path) }
-func (OSFS) Remove(path string) error                     { return os.Remove(path) }
-func (OSFS) RemoveAll(path string) error                  { return os.RemoveAll(path) }
-func (OSFS) Rename(oldpath, newpath string) error         { return os.Rename(oldpath, newpath) }
-func (OSFS) Stat(path string) (FileInfo, error)           { return os.Stat(path) }
-func (OSFS) Symlink(oldname, newname string) error        { return os.Symlink(oldname, newname) }
-func (OSFS) Link(oldname, newname string) error           { return os.Link(oldname, newname) }
+func (OSFS) MkdirAll(path string, mode os.FileMode) error  { return os.MkdirAll(path, mode) }
+func (OSFS) MkdirTemp(dir, pattern string) (string, error) { return os.MkdirTemp(dir, pattern) }
+func (OSFS) Glob(pattern string) ([]string, error)         { return filepath.Glob(pattern) }
+func (OSFS) WalkDir(root string, fn fs.WalkDirFunc) error  { return filepath.WalkDir(root, fn) }
+func (OSFS) Readlink(path string) (string, error)          { return os.Readlink(path) }
+func (OSFS) Realpath(path string) (string, error)          { return filepath.EvalSymlinks(path) }
+func (OSFS) Remove(path string) error                      { return os.Remove(path) }
+func (OSFS) RemoveAll(path string) error                   { return os.RemoveAll(path) }
+func (OSFS) Rename(oldpath, newpath string) error          { return os.Rename(oldpath, newpath) }
+func (OSFS) Stat(path string) (FileInfo, error)            { return os.Stat(path) }
+func (OSFS) Symlink(oldname, newname string) error         { return os.Symlink(oldname, newname) }
+func (OSFS) Link(oldname, newname string) error            { return os.Link(oldname, newname) }
 
 func (OSFS) SameFile(a, b string) (bool, error) {
 	ai, err := os.Stat(a)

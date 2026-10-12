@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -28,6 +29,7 @@ type DispatcherConfig struct {
 	// Logger receives user-facing output; a discard logger is used when nil.
 	Logger *log.Logger
 	// Handlers overrides the built-in directive handler list when provided.
+	// The first matching handler owns a directive for both planning and execution.
 	Handlers []Handler
 	// FS performs filesystem operations; OSFS is used when nil.
 	FS fsops.FS
@@ -87,7 +89,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, tasks []config.Task) (bool, e
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	d.ctx.RunContext = ctx
+	run := d.invocationContext(ctx)
 	success := true
 	for _, task := range tasks {
 		if err := ctx.Err(); err != nil {
@@ -97,47 +99,45 @@ func (d *Dispatcher) Dispatch(ctx context.Context, tasks []config.Task) (bool, e
 			action := taskAction.Directive
 			data := taskAction.Data
 			if d.shouldSkip(action) && action != "defaults" {
-				d.ctx.Log.Info(fmt.Sprintf("Skipping action %s", action))
+				run.Log.Info(fmt.Sprintf("Skipping action %s", action))
 				continue
 			}
 			handled := false
 			if action == "defaults" {
-				if defaults, ok := asMap(data); ok {
-					d.ctx.Defaults = defaults
-				} else {
-					d.ctx.Defaults = map[string]any{}
-				}
-				handled = true
-			}
-			for _, handler := range d.handlers {
-				if !handler.CanHandle(action) {
-					continue
-				}
-				if d.ctx.Options.DryRun && !handler.SupportsDryRun() {
-					d.ctx.Log.Action(fmt.Sprintf("Skipping dry-run-unaware handler %T", handler))
-					handled = true
-					continue
-				}
-				localSuccess, err := handler.Handle(d.ctx, action, data)
+				defaults, err := directiveDefaults(data)
 				if err != nil {
-					if d.ctx.Options.ExitOnFailure {
+					return false, err
+				}
+				run.Defaults = defaults
+				handled = true
+			} else if handler := d.handlerFor(action); handler != nil {
+				handled = true
+				if run.Options.DryRun && !handler.SupportsDryRun() {
+					run.Log.Action(fmt.Sprintf("Skipping dry-run-unaware handler %T", handler))
+					continue
+				}
+				localSuccess, err := handler.Handle(run, action, data)
+				if err != nil {
+					if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+						return false, err
+					}
+					if run.Options.ExitOnFailure {
 						return false, fmt.Errorf("executing action %s: %w", action, err)
 					}
-					d.ctx.Log.Error(fmt.Sprintf("An error was encountered while executing action %s", action))
-					d.ctx.Log.Debug(err.Error())
+					run.Log.Error(fmt.Sprintf("An error was encountered while executing action %s", action))
+					run.Log.Debug(err.Error())
 					success = false
 				}
-				if !localSuccess && d.ctx.Options.ExitOnFailure {
-					d.ctx.Log.Error(fmt.Sprintf("Action %s failed", action))
+				if !localSuccess && run.Options.ExitOnFailure {
+					run.Log.Error(fmt.Sprintf("Action %s failed", action))
 					return false, nil
 				}
 				success = success && localSuccess
-				handled = true
 			}
 			if !handled {
 				success = false
-				d.ctx.Log.Error(fmt.Sprintf("Action %s not handled", action))
-				if d.ctx.Options.ExitOnFailure {
+				run.Log.Error(fmt.Sprintf("Action %s not handled", action))
+				if run.Options.ExitOnFailure {
 					return false, nil
 				}
 			}
@@ -154,7 +154,7 @@ func (d *Dispatcher) Validate(tasks []config.Task) error {
 
 // Plan expands tasks into operations without applying filesystem or shell changes.
 func (d *Dispatcher) Plan(tasks []config.Task) (Plan, error) {
-	d.ctx.Defaults = map[string]any{}
+	run := d.invocationContext(context.Background())
 	plan := Plan{Operations: []Operation{}}
 	for _, task := range tasks {
 		for _, taskAction := range task.Actions() {
@@ -164,11 +164,11 @@ func (d *Dispatcher) Plan(tasks []config.Task) (Plan, error) {
 				continue
 			}
 			if action == "defaults" {
-				if defaults, ok := asMap(data); ok {
-					d.ctx.Defaults = defaults
-				} else {
-					d.ctx.Defaults = map[string]any{}
+				defaults, err := directiveDefaults(data)
+				if err != nil {
+					return plan, err
 				}
+				run.Defaults = defaults
 				continue
 			}
 			handler := d.handlerFor(action)
@@ -177,7 +177,7 @@ func (d *Dispatcher) Plan(tasks []config.Task) (Plan, error) {
 			}
 			validator, ok := handler.(validatingHandler)
 			if ok {
-				if err := validator.Validate(d.ctx, action, data); err != nil {
+				if err := validator.Validate(run, action, data); err != nil {
 					return plan, fmt.Errorf("validating action %s: %w", action, err)
 				}
 			}
@@ -186,7 +186,7 @@ func (d *Dispatcher) Plan(tasks []config.Task) (Plan, error) {
 				plan.Operations = append(plan.Operations, Operation{Directive: action})
 				continue
 			}
-			operations, err := planner.Plan(d.ctx, action, data)
+			operations, err := planner.Plan(run, action, data)
 			if err != nil {
 				return plan, fmt.Errorf("planning action %s: %w", action, err)
 			}
@@ -219,4 +219,32 @@ func contains(values []string, value string) bool {
 		}
 	}
 	return false
+}
+
+// Each invocation owns defaults and cancellation state; planning never changes a later dispatch.
+func (d *Dispatcher) invocationContext(ctx context.Context) *Context {
+	run := *d.ctx
+	run.RunContext = ctx
+	run.Defaults = map[string]any{}
+	return &run
+}
+
+func directiveDefaults(data any) (map[string]any, error) {
+	defaults, ok := asMap(data)
+	if !ok {
+		return nil, fmt.Errorf("defaults directive must be a map")
+	}
+	if value, exists := defaults["link"]; exists {
+		values, ok := asMap(value)
+		if !ok {
+			return nil, fmt.Errorf("defaults.link must be a map")
+		}
+		if err := validateLinkMap("defaults.link", values); err != nil {
+			return nil, err
+		}
+		if typ := stringValue(values, "type", "symlink"); !validLinkType(typ) {
+			return nil, fmt.Errorf("default link type is not recognized: %s", typ)
+		}
+	}
+	return defaults, nil
 }

@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/pelletier/go-toml/v2"
 	tomlunstable "github.com/pelletier/go-toml/v2/unstable"
@@ -31,6 +32,7 @@ func tomlOrderedTaskLists(data []byte) (map[string][]any, error) {
 	taskLists := map[string][]any{}
 	currentTaskList := ""
 	currentTaskIndex := -1
+	var currentTable []string
 
 	for parser.NextExpression() {
 		expr := parser.Expression()
@@ -41,7 +43,7 @@ func tomlOrderedTaskLists(data []byte) (map[string][]any, error) {
 			if err != nil {
 				return nil, err
 			}
-			if len(keys) == 1 && isTOMLTaskListKey(keys[0]) {
+			if len(currentTable) == 0 && len(keys) == 1 && isTOMLTaskListKey(keys[0]) {
 				list, ok := value.([]any)
 				if ok {
 					taskLists[keys[0]] = list
@@ -50,7 +52,7 @@ func tomlOrderedTaskLists(data []byte) (map[string][]any, error) {
 				currentTaskIndex = -1
 				continue
 			}
-			if currentTaskList == "" || currentTaskIndex < 0 {
+			if currentTaskList == "" || currentTaskIndex < 0 || len(currentTable) > 1 {
 				continue
 			}
 			task, ok := taskLists[currentTaskList][currentTaskIndex].(orderedMap)
@@ -61,23 +63,38 @@ func tomlOrderedTaskLists(data []byte) (map[string][]any, error) {
 			taskLists[currentTaskList][currentTaskIndex] = task
 		case tomlunstable.ArrayTable:
 			keys := tomlKeyParts(expr.Key())
+			currentTable = keys
 			if len(keys) == 1 && isTOMLTaskListKey(keys[0]) {
 				taskLists[keys[0]] = append(taskLists[keys[0]], orderedMap{})
 				currentTaskList = keys[0]
 				currentTaskIndex = len(taskLists[keys[0]]) - 1
 				continue
 			}
-			currentTaskList = ""
-			currentTaskIndex = -1
+			currentTaskList, currentTaskIndex = tomlNestedTask(taskLists, keys)
 		case tomlunstable.Table:
-			currentTaskList = ""
-			currentTaskIndex = -1
+			currentTable = tomlKeyParts(expr.Key())
+			currentTaskList, currentTaskIndex = tomlNestedTask(taskLists, currentTable)
 		}
 	}
 	if err := parser.Error(); err != nil {
 		return nil, err
 	}
 	return taskLists, nil
+}
+
+func tomlNestedTask(taskLists map[string][]any, keys []string) (string, int) {
+	if len(keys) < 2 || !isTOMLTaskListKey(keys[0]) || len(taskLists[keys[0]]) == 0 {
+		return "", -1
+	}
+	index := len(taskLists[keys[0]]) - 1
+	task, _ := taskLists[keys[0]][index].(orderedMap)
+	for _, pair := range task {
+		if pair.key == keys[1] {
+			return keys[0], index
+		}
+	}
+	taskLists[keys[0]][index] = append(task, orderedPair{key: keys[1]})
+	return keys[0], index
 }
 
 func applyTOMLTaskOrder(raw any, taskLists map[string][]any) {
@@ -93,9 +110,42 @@ func applyTOMLTaskOrder(raw any, taskLists map[string][]any) {
 		if !ok {
 			continue
 		}
-		if _, exists := root[key]; exists {
-			root[key] = tasks
+		decodedTasks, ok := normalizeValue(root[key]).([]any)
+		if !ok {
+			continue
 		}
+		orderedTasks := make([]any, 0, len(decodedTasks))
+		for i, decoded := range decodedTasks {
+			values, ok := decoded.(map[string]any)
+			if !ok {
+				orderedTasks = append(orderedTasks, decoded)
+				continue
+			}
+			ordered := orderedMap{}
+			seen := map[string]bool{}
+			if i < len(tasks) {
+				pairs, _ := tasks[i].(orderedMap)
+				for _, pair := range pairs {
+					if value, exists := values[pair.key]; exists && !seen[pair.key] {
+						ordered = append(ordered, orderedPair{key: pair.key, value: value})
+						seen[pair.key] = true
+					}
+				}
+			}
+			// Preserve all decoded values even if an ordering expression is unfamiliar.
+			remaining := []string{}
+			for name := range values {
+				if !seen[name] {
+					remaining = append(remaining, name)
+				}
+			}
+			sort.Strings(remaining)
+			for _, name := range remaining {
+				ordered = append(ordered, orderedPair{key: name, value: values[name]})
+			}
+			orderedTasks = append(orderedTasks, ordered)
+		}
+		root[key] = orderedTasks
 	}
 }
 

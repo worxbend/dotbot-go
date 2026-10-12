@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 
@@ -8,15 +9,21 @@ import (
 	sh "dotbot-go/internal/shell"
 )
 
-func testSuccess(ctx *Context, command string) bool {
+func testSuccess(ctx *Context, command string) (bool, error) {
 	ret := ctx.Shell.Run(ctx.RunContext, command, sh.Options{
 		CWD:     ctx.BaseDirectory,
 		Timeout: defaultTimeout(ctx.Options.ShellTimeout),
 	})
+	if err := ctx.RunContext.Err(); err != nil {
+		return false, err
+	}
+	if ret == 130 || ret == 143 {
+		return false, context.Canceled
+	}
 	if ret != 0 {
 		ctx.Log.Debug(fmt.Sprintf("Test '%s' returned false", command))
 	}
-	return ret == 0
+	return ret == 0, nil
 }
 
 func baseDir(ctx *Context, canonical bool) string {
@@ -39,7 +46,10 @@ type linkResolution struct {
 
 func resolveLink(ctx *Context, target, linkName string, opts linkOptions) linkResolution {
 	linkPath := expand.Abs(linkName)
-	absoluteTarget := filepath.Join(baseDir(ctx, opts.Canonicalize), target)
+	absoluteTarget := expand.Path(target)
+	if !filepath.IsAbs(absoluteTarget) {
+		absoluteTarget = filepath.Join(baseDir(ctx, opts.Canonicalize), absoluteTarget)
+	}
 	targetPath := absoluteTarget
 	if opts.Relative {
 		targetPath = relativePath(absoluteTarget, linkPath)

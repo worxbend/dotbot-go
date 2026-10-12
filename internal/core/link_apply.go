@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"dotbot-go/internal/expand"
 )
@@ -21,9 +22,11 @@ func processOneLink(ctx *Context, target, linkName string, opts linkOptions, glo
 	backupSuccess := true
 	if opts.Backup {
 		didBackup, backupSuccess = backup(ctx, link)
-		success = backupSuccess && success
+		if !backupSuccess {
+			return false
+		}
 	}
-	if (opts.Force || opts.Relink) && (!didBackup || !backupSuccess) {
+	if (opts.Force || opts.Relink) && !didBackup {
 		var deleteSuccess bool
 		didDelete, deleteSuccess = deleteLink(ctx, link, opts)
 		success = deleteSuccess && success
@@ -35,15 +38,25 @@ func backup(ctx *Context, link linkResolution) (bool, bool) {
 	path := link.linkName
 	if ctx.FS.Exists(expand.Path(path)) && !ctx.FS.IsSymlink(expand.Path(path)) {
 		timestamp := ctx.Clock().Format("20060102-150405")
-		backupName := path + ".dotbot-backup." + timestamp
-		ctx.Log.Debug(fmt.Sprintf("Try to backup file %s to %s", path, backupName))
+		pattern := filepath.Base(link.linkPath) + ".dotbot-backup." + timestamp + "-"
 		if ctx.Options.DryRun {
-			ctx.Log.Action(fmt.Sprintf("Would backup %s to %s", path, backupName))
+			ctx.Log.Action(fmt.Sprintf("Would backup %s in %s*", path, filepath.Join(filepath.Dir(link.linkPath), pattern)))
 			return true, true
 		}
+		// Reserve a private directory atomically; rename cannot replace an older backup.
+		backupDir, err := ctx.FS.MkdirTemp(filepath.Dir(link.linkPath), pattern)
+		if err != nil {
+			ctx.Log.Warning(fmt.Sprintf("Failed to reserve backup for %s", path))
+			ctx.Log.Debug(err.Error())
+			return false, false
+		}
+		backupName := filepath.Join(backupDir, filepath.Base(link.linkPath))
 		if err := ctx.FS.Rename(expand.Abs(path), expand.Abs(backupName)); err != nil {
 			ctx.Log.Warning(fmt.Sprintf("Failed to backup file %s to %s", path, backupName))
 			ctx.Log.Debug(err.Error())
+			if removeErr := ctx.FS.Remove(backupDir); removeErr != nil {
+				ctx.Log.Warning(fmt.Sprintf("Failed to remove empty backup directory %s: %v", backupDir, removeErr))
+			}
 			return false, false
 		}
 		ctx.Log.Action(fmt.Sprintf("Backed up file %s to %s", path, backupName))

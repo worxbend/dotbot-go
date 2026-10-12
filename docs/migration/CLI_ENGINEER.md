@@ -12,3 +12,4 @@
 
 - Python plugin flags are not implemented in the Go port.
 - `--version` reports the Go port version rather than the Python package version.
+- Script installation, release archives, and source builds provide `dotbot`; Snap exposes `dotbot-go`. Help examples use `dotbot` and note the Snap command name.

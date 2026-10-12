@@ -719,9 +719,13 @@ func TestBackupUsesInjectedClock(t *testing.T) {
 	if !success {
 		t.Fatalf("dispatch failed: %s", out.String())
 	}
-	backupPath := link + ".dotbot-backup.20260102-030405"
-	if _, err := os.Stat(backupPath); err != nil {
-		t.Fatalf("missing backup %q: %v", backupPath, err)
+	backups, err := filepath.Glob(link + ".dotbot-backup.20260102-030405-*")
+	if err != nil || len(backups) != 1 {
+		t.Fatalf("backups = %v, error = %v", backups, err)
+	}
+	content, err := os.ReadFile(filepath.Join(backups[0], filepath.Base(link)))
+	if err != nil || string(content) != "existing\n" {
+		t.Fatalf("backup content = %q, error = %v", content, err)
 	}
 }
 

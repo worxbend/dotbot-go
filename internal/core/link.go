@@ -24,6 +24,9 @@ func (LinkHandler) Validate(ctx *Context, directive string, data any) error {
 		return fmt.Errorf("link directive must be a map")
 	}
 	defaults, _ := asMap(ctx.Defaults["link"])
+	if err := validateLinkMap("defaults.link", defaults); err != nil {
+		return err
+	}
 	def := defaultLinkOptions(defaults)
 	if !validLinkType(def.Type) {
 		return fmt.Errorf("default link type is not recognized: %s", def.Type)
@@ -75,7 +78,10 @@ func (h LinkHandler) Plan(ctx *Context, directive string, data any) ([]Operation
 }
 
 // Handle creates or updates links requested by the link directive.
-func (LinkHandler) Handle(ctx *Context, directive string, data any) (bool, error) {
+func (h LinkHandler) Handle(ctx *Context, directive string, data any) (bool, error) {
+	if err := h.Validate(ctx, directive, data); err != nil {
+		return false, err
+	}
 	links, ok := asMap(data)
 	if !ok {
 		return false, fmt.Errorf("link directive must be a map")
@@ -104,12 +110,22 @@ func (LinkHandler) Handle(ctx *Context, directive string, data any) (bool, error
 			path = defaultTarget(linkName, target)
 		}
 		path = filepath.Clean(expand.Path(path))
-		if opts.If != "" && !testSuccess(ctx, opts.If) {
-			ctx.Log.Info(fmt.Sprintf("Skipping %s", linkName))
-			continue
+		if opts.If != "" {
+			if ctx.Options.DryRun {
+				ctx.Log.Action(fmt.Sprintf("Would evaluate condition [%s] before linking %s; conditional link preview skipped", opts.If, linkName))
+				continue
+			}
+			condition, err := testSuccess(ctx, opts.If)
+			if err != nil {
+				return false, err
+			}
+			if !condition {
+				ctx.Log.Info(fmt.Sprintf("Skipping %s", linkName))
+				continue
+			}
 		}
 		if opts.Glob && hasGlobChars(path) {
-			matches, err := createGlobResults(path, opts.Exclude)
+			matches, err := createGlobResults(ctx.FS, path, opts.Exclude)
 			if err != nil {
 				ctx.Log.Warning(fmt.Sprintf("Unable to expand glob '%s': %v", path, err))
 				success = false
@@ -132,6 +148,20 @@ func (LinkHandler) Handle(ctx *Context, directive string, data any) (bool, error
 }
 
 func validateLinkMap(linkName string, values map[string]any) error {
+	for _, key := range []string{"relative", "canonicalize", "canonicalize-path", "force", "relink", "create", "glob", "backup", "ignore-missing"} {
+		if value, exists := values[key]; exists {
+			if _, ok := value.(bool); !ok {
+				return fmt.Errorf("link %s for %s must be a boolean", key, linkName)
+			}
+		}
+	}
+	for _, key := range []string{"prefix", "if"} {
+		if value, exists := values[key]; exists {
+			if _, ok := asString(value); !ok {
+				return fmt.Errorf("link %s for %s must be a string", key, linkName)
+			}
+		}
+	}
 	if path, ok := values["path"]; ok && path != nil {
 		if _, ok := asString(path); !ok {
 			return fmt.Errorf("link path for %s must be a string", linkName)

@@ -54,7 +54,8 @@ The Python implementation usually logs per-item failures and returns aggregate s
 - Built-ins supported: `defaults`, `link`, `create`, `shell`, `clean`.
 - Python plugin loading is not supported. `plugins`, `--plugin`, `--plugin-dir`, and built-in plugin disabling are intentionally omitted.
 - Shell commands run through `$SHELL -c` on Unix and `cmd /C` on Windows, matching the Python intent.
-- Shell commands use a default timeout to avoid unbounded process hangs. The timeout is a Go safety improvement and is documented in `README.md`.
+- Shell commands and `link.if` conditions have a 10-minute timeout per command, documented in `README.md` and the user guide. The CLI and config provide no timeout override.
+- Dry run does not execute shell commands or evaluate `link.if` conditions. It reports each conditional link's condition and destination, then skips its filesystem preview; the outcome remains unknown until an actual run.
 
 ## Filesystem Safety
 
@@ -62,5 +63,5 @@ Filesystem operations are centralized in `fsops` and routed through dry-run chec
 
 - `relink` removes only existing symlinks with mismatched targets.
 - `force` may remove files/directories at the destination.
-- `backup` renames existing non-link destinations before linking.
-- `clean` only removes broken symlinks under the base directory unless `force` is enabled.
+- `backup` reserves a private, unique `<destination>.dotbot-backup.<timestamp>-<random>` directory and moves the original file or directory into it under its basename. Existing backups are preserved; reservation or move failures leave the original destination in place.
+- `clean` removes broken symlinks in selected directories only when their targets are inside the base directory, unless `force` is enabled. It checks immediate entries unless `recursive` is enabled and does not traverse directory symlinks.
